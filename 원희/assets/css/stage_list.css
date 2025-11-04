@@ -1,9 +1,7 @@
 /* stage_list.css */
 /* stage_list_easy.html과 stage_list_hard.html 공용 스타일 */
 
-/* main_layout.css의 .main-content 배경을 덮어쓰기 위해 
-  .easy-mode, .hard-mode 클래스를 사용합니다.
-*/
+/* ... (easy-mode, hard-mode 배경 설정은 동일) ... */
 .main-content.easy-mode {
     background-image: url('../images/moring.jpg');
 }
@@ -13,13 +11,12 @@
 }
 
 
-/* --- 아래는 스테이지 버튼 레이아웃 (이전 답변과 동일) --- */
-
 .stage-list-container {
     width: 90%;
-    max-width: 700px;
+    /* ▼▼▼ 5개 버튼이 들어갈 수 있게 최대 너비 수정 ▼▼▼ */
+    max-width: 900px; 
     padding: 20px;
-    background-color: rgba(0, 0, 0, 0.7); /* 반투명 검은 배경 */
+    background-color: rgba(0, 0, 0, 0.7); 
     border-radius: 10px;
     border: 2px solid #ddd;
     display: flex;
@@ -37,14 +34,16 @@
 
 .stage-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    /* ▼▼▼ 5열로 고정하는 그리드 설정 ▼▼▼ */
+    grid-template-columns: repeat(5, 1fr);
     gap: 15px;
 }
 
 .stage-box {
     display: block;
-    padding: 30px 15px;
-    font-size: 1.8rem;
+    /* ▼▼▼ 패딩과 폰트 크기 약간 축소 ▼▼▼ */
+    padding: 25px 10px;
+    font-size: 1.5rem; 
     font-weight: bold;
     color: white;
     text-decoration: none;
@@ -57,12 +56,13 @@
 
 .stage-box span {
     display: block;
-    font-size: 1rem;
+    font-size: 0.9rem; /* 폰트 크기 약간 축소 */
     font-weight: normal;
     opacity: 0.8;
     margin-top: 5px;
 }
 
+/* ... (hover, locked, back-btn 스타일은 동일) ... */
 .stage-box:hover {
     transform: scale(1.05);
     background-color: #4a90e2; /* 이지 모드 색상 */
