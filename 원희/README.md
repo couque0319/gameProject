@@ -2088,13 +2088,333 @@ select_stage.html
             └── 🎵 main_music.mp3
 ```
 
+select_stage.html
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STAGE SELECT - PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/main_layout.css">
+    <link rel="stylesheet" href="assets/css/stage.css">
+</head>
+<body>
+
+    <div class="main-content">
+
+        <div class="stage-select-options">
+            <h2>전장 선택</h2>
+            
+            <a href="stage_list_easy.html" class="stage-btn easy">
+                아침 <span>(Easy Mode)</span>
+            </a>
+            
+            <a href="stage_list_hard.html" class="stage-btn hard">
+                밤 <span>(Hard Mode)</span>
+            </a>
+            
+            <a href="main.html" class="back-btn">
+                &laquo; 뒤로가기
+            </a>
+        </div>
+
+    </div>
+    
+</body>
+</html>
+```
+
+stage_list_easy.html
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SELECT MISSION (EASY) - PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/main_layout.css">
+    <link rel="stylesheet" href="assets/css/stage_list.css">
+</head>
+<body>
+    <div class="main-content easy-mode">
+        <div class="stage-list-container">
+            
+            <h2>미션 선택 (Easy Mode)</h2>
+            
+            <div class="stage-grid">
+                <a href="#" class="stage-box" data-stage="1">
+                    STAGE 1
+                    <span>인트로</span>
+                </a>
+                <a href="#" class="stage-box" data-stage="2">
+                    STAGE 2
+                    <span>적 기지 돌파</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="3">
+                    STAGE 3
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="4">
+                    STAGE 4
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="5">
+                    STAGE 5
+                    <span>(LOCKED)</span>
+                </a>
+                
+                <a href="#" class="stage-box locked" data-stage="6">
+                    STAGE 6
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="7">
+                    STAGE 7
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="8">
+                    STAGE 8
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="9">
+                    STAGE 9
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="10">
+                    STAGE 10
+                    <span>(LOCKED)</span>
+                </a>
+            </div>
+            
+            <a href="select_stage.html" class="back-btn">
+                &laquo; 난이도 다시 선택
+            </a>
+        </div>
+    </div>
+    
+    <script src="assets/js/stage_list_easy.js"></script>
+</body>
+</html>
+```
+
+stage_list_hard.html
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SELECT MISSION (HARD) - PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/main_layout.css">
+    <link rel="stylesheet" href="assets/css/stage_list.css">
+</head>
+<body>
+    <div class="main-content hard-mode">
+        <div class="stage-list-container">
+            
+            <h2>미션 선택 (Hard Mode)</h2>
+            
+            <div class="stage-grid">
+                <a href="#" class="stage-box" data-stage="1">
+                    STAGE 1
+                    <span>야간 기지 잠입</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="2">
+                    STAGE 2
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="3">
+                    STAGE 3
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="4">
+                    STAGE 4
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="5">
+                    STAGE 5
+                    <span>(LOCKED)</span>
+                </a>
+                
+                <a href="#" class="stage-box locked" data-stage="6">
+                    STAGE 6
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="7">
+                    STAGE 7
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="8">
+                    STAGE 8
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="9">
+                    STAGE 9
+                    <span>(LOCKED)</span>
+                </a>
+                <a href="#" class="stage-box locked" data-stage="10">
+                    STAGE 10
+                    <span>(LOCKED)</span>
+                </a>
+            </div>
+            
+            <a href="select_stage.html" class="back-btn">
+                &laquo; 난이도 다시 선택
+            </a>
+        </div>
+    </div>
+    
+    <script src="assets/js/stage_list_hard.js"></script>
+</body>
+</html>
+```
+
+stage_list.css
+```
+/* stage_list.css */
+/* stage_list_easy.html과 stage_list_hard.html 공용 스타일 */
+
+/* ... (easy-mode, hard-mode 배경 설정은 동일) ... */
+.main-content.easy-mode {
+    background-image: url('../images/moring.jpg');
+}
+
+.main-content.hard-mode {
+    background-image: url('../images/night.jpg');
+}
 
 
+.stage-list-container {
+    width: 90%;
+    /* ▼▼▼ 5개 버튼이 들어갈 수 있게 최대 너비 수정 ▼▼▼ */
+    max-width: 900px; 
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.7); 
+    border-radius: 10px;
+    border: 2px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    gap: 20px; 
+}
 
+.stage-list-container h2 {
+    font-size: 2.5rem;
+    color: white;
+    text-align: center;
+    margin: 0 0 15px 0;
+    text-shadow: 2px 2px 4px #000;
+}
 
+.stage-grid {
+    display: grid;
+    /* ▼▼▼ 5열로 고정하는 그리드 설정 ▼▼▼ */
+    grid-template-columns: repeat(5, 1fr);
+    gap: 15px;
+}
 
+.stage-box {
+    display: block;
+    /* ▼▼▼ 패딩과 폰트 크기 약간 축소 ▼▼▼ */
+    padding: 25px 10px;
+    font-size: 1.5rem; 
+    font-weight: bold;
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    text-align: center;
+    transition: transform 0.2s ease, background-color 0.2s;
+    background-color: #333;
+    border: 2px solid #888;
+}
 
+.stage-box span {
+    display: block;
+    font-size: 0.9rem; /* 폰트 크기 약간 축소 */
+    font-weight: normal;
+    opacity: 0.8;
+    margin-top: 5px;
+}
 
+/* ... (hover, locked, back-btn 스타일은 동일) ... */
+.stage-box:hover {
+    transform: scale(1.05);
+    background-color: #4a90e2; /* 이지 모드 색상 */
+    border-color: #8ec5fc;
+}
+
+.stage-box.locked {
+    background-color: #555;
+    border-color: #777;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.stage-box.locked:hover {
+    transform: none;
+    background-color: #555;
+}
+
+.back-btn {
+    margin-top: 10px;
+    font-size: 1rem;
+    color: #ddd;
+    text-decoration: none;
+    text-align: center;
+    transition: color 0.2s;
+}
+
+.back-btn:hover {
+    color: white;
+    text-decoration: underline;
+}
+```
+
+stage_list_easy.js
+```
+// stage_list_easy.js
+
+// 1. 스테이지 버튼들 가져오기
+const stageButtons = document.querySelectorAll('.stage-box');
+
+// 2. 각 버튼에 'easy' 난이도 링크 설정하기
+stageButtons.forEach(button => {
+    // 잠긴 버튼은 링크 설정 안 함
+    if (button.classList.contains('locked')) {
+        button.href = '#';
+        return;
+    }
+
+    const stageNumber = button.dataset.stage; // data-stage="1"
+
+    // 'easy' 모드용 링크 설정
+    button.href = `game.html?difficulty=easy&stage=${stageNumber}`;
+});
+```
+
+stage_list_hard.js
+```
+// stage_list_hard.js
+
+// 1. 스테이지 버튼들 가져오기
+const stageButtons = document.querySelectorAll('.stage-box');
+
+// 2. 각 버튼에 'hard' 난이도 링크 설정하기
+stageButtons.forEach(button => {
+    // 잠긴 버튼은 링크 설정 안 함
+    if (button.classList.contains('locked')) {
+        button.href = '#';
+        return;
+    }
+
+    const stageNumber = button.dataset.stage; // data-stage="1"
+
+    // 'hard' 모드용 링크 설정
+    button.href = `game.html?difficulty=hard&stage=${stageNumber}`;
+});
+```
 
 
 
