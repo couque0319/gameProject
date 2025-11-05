@@ -2677,3 +2677,258 @@ selectionBoxes.forEach(box => {
             ├── 🎵 intro_music.mp3
             └── 🎵 main_music.mp3
 ```
+
+----------
+
+## player2 도 움직이게 만들기 
+
+```
+📁 Webgame/
+    │
+    ├── 📄 hangar.html
+    ├── 📄 intro.html
+    ├── 📄 main.html
+    ├── 📄 select_stage.html
+    ├── 📄 stage_list_easy.html
+    ├── 📄 stage_list_hard.html
+    │
+    └── 📁 assets/
+        │
+        ├── 📁 css/
+        │   ├── 📄 base.css
+        │   ├── 📄 hangar.css
+        │   ├── 📄 intro.css
+        │   ├── 📄 main.css
+        │   ├── 📄 main_layout.css
+        │   ├── 📄 stage.css
+        │   └── 📄 stage_list.css
+        │
+        ├── 📁 js/
+        │   ├── 📄 hangar.js
+        │   ├── 📄 main_game.js
+        │   ├── 📄 script.js (인트로 JS)
+        │   ├── 📄 stage_list_easy.js
+        │   └── 📄 stage_list_hard.js
+        │
+        ├── 📁 images/
+        │   ├── 🖼️ intro_image.png
+        │   ├── 🖼️ main.jpg
+        │   ├── 🖼️ moring.jpg (easy 모드 배경)
+        │   ├── 🖼️ night.jpg (hard 모드 배경)
+        │   │
+        │   └── 📁 player/
+        │       ├── 🖼️ player1_frame1.png
+        │       ├── 🖼️ player1_frame2.png
+        │       ├── 🖼️ player1_frame3.png
+        │       ├── 🖼️ player1_frame4.png
+        │       ├── 🖼️ player2_frame1.png 
+        │       ├── 🖼️ player2_frame2.png 
+        │       ├── 🖼️ player2_frame3.png 
+        │       └── 🖼️ player2_frame4.png 
+        │
+        └── 📁 audio/
+            ├── 🎵 intro_music.mp3
+            └── 🎵 main_music.mp3
+```
+
+hangar.css
+```
+/* assets/css/hangar.css */
+
+/* .stage-list-container 스타일 재사용 */
+.hangar-container {
+    width: 90%;
+    max-width: 800px; /* 두 기체가 보이도록 너비 조절 */
+    padding: 20px 30px;
+    background-color: rgba(0, 0, 0, 0.75); 
+    border-radius: 10px;
+    border: 2px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    gap: 25px; 
+}
+
+.hangar-container h2 {
+    font-size: 2.5rem;
+    color: white;
+    text-align: center;
+    margin: 0 0 10px 0;
+    text-shadow: 2px 2px 4px #000;
+}
+
+/* 기체 선택 영역 */
+.airplane-selection {
+    display: flex;
+    justify-content: space-around; /* 양 옆으로 배치 */
+    gap: 20px;
+}
+
+/* 개별 기체 카드 */
+.airplane-box {
+    background-color: #222;
+    border: 3px solid #888;
+    border-radius: 10px;
+    padding: 20px;
+    width: 45%;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.airplane-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.5rem;
+    color: #eee;
+}
+
+.airplane-box p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+/* --- 애니메이션 적용 부분 --- */
+
+/* 기체 이미지 표시용 div (공통 스타일) */
+.airplane-box .airplane-image {
+    width: 100%;
+    max-width: 250px; /* 이미지 최대 크기 */
+    height: 250px; /* 이미지 높이 고정 */
+    margin: 0 auto 15px auto; /* 중앙 정렬 */
+    background-size: contain; /* 이미지가 잘리지 않고 div에 맞춰지도록 */
+    background-repeat: no-repeat;
+    background-position: center;
+    border-bottom: 2px solid #555;
+    padding-bottom: 15px;
+}
+
+/* airplane1의 기본 이미지 */
+.airplane-box .airplane1-img {
+    background-image: url('../images/player/player1_frame2.png'); 
+}
+
+/* airplane1 호버 시 애니메이션 */
+.airplane-box[data-plane-id="airplane1"]:hover .airplane1-img {
+    animation: engineFlameAnimation 0.6s steps(4) infinite;
+}
+
+/* @keyframes 정의: player1 엔진 불꽃 */
+@keyframes engineFlameAnimation {
+    0% { background-image: url('../images/player/player1_frame1.png'); }
+    25% { background-image: url('../images/player/player1_frame3.png'); }
+    50% { background-image: url('../images/player/player1_frame4.png'); }
+    75% { background-image: url('../images/player/player1_frame3.png'); }
+    100% { background-image: url('../images/player/player1_frame1.png'); }
+}
+
+
+/* ▼▼▼ player2 스타일 시작 (확장자 .png로 수정) ▼▼▼ */
+
+/* airplane2의 기본 이미지 (가만히 있을 때) */
+/* 불꽃이 없는 'player2_frame3.png'로 변경 */
+.airplane-box .airplane2-img {
+    background-image: url('../images/player/player2_frame3.png'); 
+}
+
+/* airplane2 호버 시 애니메이션 */
+.airplane-box[data-plane-id="airplane2"]:hover .airplane2-img {
+    animation: engineFlameAnimationPlayer2 0.6s steps(4) infinite;
+}
+
+/* @keyframes 정의: player2 엔진 불꽃 */
+/* player1처럼 불꽃이 깜빡이도록 (1 -> 2 -> 4 -> 2 -> 1) 프레임 순서 변경 */
+@keyframes engineFlameAnimationPlayer2 {
+    0% { background-image: url('../images/player/player2_frame1.png'); } /* 큰 불꽃 */
+    25% { background-image: url('../images/player/player2_frame2.png'); } /* 중간 불꽃 */
+    50% { background-image: url('../images/player/player2_frame4.png'); } /* 작은 불꽃 */
+    75% { background-image: url('../images/player/player2_frame2.png'); } /* 중간 불꽃 */
+    100% { background-image: url('../images/player/player2_frame1.png'); } /* 큰 불꽃 */
+}
+
+/* ▲▲▲ player2 스타일 끝 ▲▲▲ */
+
+
+/* 마우스 올렸을 때 카드 확대 */
+.airplane-box:hover {
+    transform: scale(1.03);
+    border-color: #fff;
+}
+
+/* 선택되었을 때의 스타일 (JS로 제어) */
+.airplane-box.selected {
+    background-color: #004a9e; /* 파란색 계열 */
+    border-color: #8ec5fc;
+    box-shadow: 0 0 20px rgba(142, 197, 252, 0.7);
+}
+
+/* 뒤로가기 버튼 */
+.back-btn {
+    margin-top: 10px;
+    font-size: 1rem;
+    color: #ddd;
+    text-decoration: none;
+    text-align: center;
+    transition: color 0.2s;
+}
+
+.back-btn:hover {
+    color: white;
+    text-decoration: underline;
+}
+```
+
+hangar.html
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>격납고 - PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/main_layout.css">
+    <link rel="stylesheet" href="assets/css/hangar.css">
+</head>
+<body>
+
+    <div class="main-content">
+
+        <div class="hangar-container">
+            <h2>기체 선택</h2>
+            
+            <div class="airplane-selection">
+                <div class="airplane-box" data-plane-id="airplane1">
+                    <div class="airplane-image airplane1-img"></div> 
+                    <h3>TYPE-A: Striker</h3>
+                    <p>표준형 기체. 밸런스가 잡혀있습니다.</p>
+                </div>
+                
+                <div class="airplane-box" data-plane-id="airplane2">
+                    <div class="airplane-image airplane2-img"></div> 
+                    <h3>TYPE-B: Interceptor</h3>
+                    <p>탱커형 기체. 속도가 느리지만 방어력이 높습니다.</p>
+                </div>
+            </div>
+            
+            <a href="main.html" class="back-btn">
+                &laquo; 메인 메뉴로
+            </a>
+        </div>
+    </div>
+    
+    <script src="assets/js/hangar.js"></script>
+</body>
+</html>
+```
+
+------------------------
+
+
+
+
+
+
+
+
+
