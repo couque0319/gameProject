@@ -3530,6 +3530,11 @@ stageButtons.forEach(button => {
             └── 🎵 pick.mp3
 ```
 
+-------------------------------------------
+
+## 게임 제목을 정했으니 제목 바꾸고 폰트 변경하기 
+
+<img width="1855" height="889" alt="image" src="https://github.com/user-attachments/assets/ac8cedf1-7e3a-434a-9069-94f01262cdbc" />
 
 
 
