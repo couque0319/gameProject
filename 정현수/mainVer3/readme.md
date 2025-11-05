@@ -15,7 +15,8 @@ ver2 이후 수정 부분은 주석으로 ver3 를 달아놓음 컨F로 검색
 3. 연사력, 데미지 강화 구현 데미지 강화는 탄환 이미지 교체로 시각적 확인 가능
 
 4. 무장에 데미지 값 넣어 놓음 체력 시스템 구현하면 weapon.damage 또는 missile.explosionDamage로 값 받아서 연동하면 ok
-        const BULLET_SKINS = ['bulletB1', 'bulletR1', 'bulletG1', 'bulletW1']; //ver3
+
+5. 현제 데미지 수치
         const __FIRERATE_TABLE = [200, 125, 83, 67]; //ver3
         const __DAMAGE_TABLE = [20, 25, 32, 40]; //ver3
         const __MISSILE_DAMAGE_TABLE = [80, 100, 125, 150]; //ver3
