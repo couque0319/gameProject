@@ -36,7 +36,7 @@ js와 css를 따로 작성하고 html로 불러오기
 
 ---
 
-## 베이스 코드드 
+## 베이스 코드
 ```
 <!DOCTYPE html>
 <html lang="ko">
