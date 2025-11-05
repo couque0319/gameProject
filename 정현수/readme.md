@@ -42,7 +42,6 @@ player1_1
 player1_0
 carrier1
 
-라인 339 마우스 감지 & 플레이어 이동
 this.input.on('pointermove', (pointer) => {
 
 4. "ver2"는 이후 상점과 출격 제작할때 만들거나 수정한 코드들 범위가 아니라 각 함수 이름 옆에 주석으로 달아놓음
