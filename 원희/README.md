@@ -2924,6 +2924,563 @@ hangar.html
 
 ------------------------
 
+## 사운드 추가 
+
+main_game.js
+```
+// assets/js/main_game.js
+
+// --- 1. HTML 요소들 가져오기 ---
+const settingsModal = document.getElementById('settings-modal');
+const openBtn = document.getElementById('settings-open-btn');
+const closeBtn = document.getElementById('settings-close-btn');
+
+const audio = document.getElementById('main-music');
+const volumeSlider = document.getElementById('volume-slider');
+
+const controlButtonContainer = document.querySelector('.control-buttons');
+const controlButtons = document.querySelectorAll('.control-btn');
+
+// --- 2. 설정창 열기/닫기 이벤트 ---
+
+// 톱니바퀴 클릭 시
+openBtn.addEventListener('click', () => {
+    settingsModal.classList.add('show'); // .show 클래스 추가해서 보이기
+});
+
+// X 버튼 클릭 시
+closeBtn.addEventListener('click', () => {
+    settingsModal.classList.remove('show'); // .show 클래스 제거해서 숨기기
+});
+
+// 모달 배경 클릭 시 (선택 사항)
+settingsModal.addEventListener('click', (event) => {
+    // 클릭된 곳이 모달 배경(자기 자신)일 때만 닫힘
+    if (event.target === settingsModal) {
+        settingsModal.classList.remove('show');
+    }
+});
+
+
+// --- 3. 소리 조절 이벤트 ---
+
+// 페이지 로드 시, 슬라이더 값을 실제 오디오 볼륨에 적용
+// (audio.volume은 0~1 사이, 슬라이더는 0~100)
+// audio가 로드되지 않았을 수 있으니 null 체크
+if (audio) {
+    audio.volume = volumeSlider.value / 100;
+}
+
+// 슬라이더를 '움직일 때마다'(input) 볼륨 변경
+volumeSlider.addEventListener('input', (event) => {
+    if (audio) {
+        const newVolume = event.target.value / 100;
+        audio.volume = newVolume;
+    }
+});
+
+
+// --- 4. 조작 방식 선택 이벤트 ---
+
+// '조작 방식' 버튼 그룹에 이벤트 리스너 추가
+controlButtonContainer.addEventListener('click', (event) => {
+    // 클릭된 요소가 .control-btn이 아니면 무시
+    if (!event.target.classList.contains('control-btn')) {
+        return;
+    }
+
+    // 1. 모든 버튼에서 'active' 클래스 제거
+    controlButtons.forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // 2. 지금 클릭한 버튼에만 'active' 클래스 추가
+    const clickedButton = event.target;
+    clickedButton.classList.add('active');
+
+    // 3. 어떤 키가 선택되었는지 확인 (나중에 게임 로직에서 사용)
+    const selectedControl = clickedButton.dataset.control; // (e.g., "wasd", "arrows", "mouse")
+    console.log('선택된 조작 방식:', selectedControl);
+
+    // (선택 사항) 사용자의 선택을 브라우저에 저장하기
+    // localStorage.setItem('controlScheme', selectedControl);
+});
+
+
+// --- 5. 메인 메뉴 사운드 추가 ---
+
+// 1. 사운드 파일 로드
+const hoverSound = new Audio('assets/audio/chiose.mp3');
+const clickSound = new Audio('assets/audio/pick.mp3');
+
+// 2. 메인 버튼들 가져오기
+const menuButtons = document.querySelectorAll('.menu-btn');
+
+menuButtons.forEach(button => {
+    // 3. 마우스 올렸을 때 (chiose.mp3)
+    button.addEventListener('mouseenter', () => {
+        hoverSound.currentTime = 0; // 소리 초기화 (연속 호버 대비)
+        hoverSound.play();
+    });
+
+    // 4. 클릭했을 때 (pick.mp3)
+    button.addEventListener('click', (event) => {
+        // (A) 기본 링크 이동을 즉시 막음
+        event.preventDefault(); 
+        
+        // (B) 클릭 사운드 재생
+        clickSound.currentTime = 0;
+        clickSound.play();
+        
+        // (C) 이동할 주소(href) 저장
+        const destination = event.currentTarget.href;
+        
+        // (D) 사운드가 재생될 시간(0.5초)을 기다린 후 페이지 이동
+        setTimeout(() => {
+            window.location.href = destination;
+        }, 500); // 0.5초 지연 (pick.mp3 길이만큼 조절)
+    });
+});
+```
+
+hangar.js
+```
+// assets/js/hangar.js
+
+// 1. HTML 요소 가져오기
+const selectionBoxes = document.querySelectorAll('.airplane-box');
+
+// --- 1-A. 사운드 파일 로드 추가 ---
+const hoverSound = new Audio('assets/audio/chiose.mp3');
+const clickSound = new Audio('assets/audio/pick.mp3');
+// --- ---
+
+// 2. 현재 저장된 기체 선택 불러오기
+// localStorage는 브라우저를 껐다 켜도 유지되는 간단한 저장소입니다.
+const savedPlaneId = localStorage.getItem('selectedAirplane');
+
+// 3. 페이지 로드 시, 이전에 선택한 기체가 있으면 .selected 표시하기
+if (savedPlaneId) {
+    const savedBox = document.querySelector(`.airplane-box[data-plane-id="${savedPlaneId}"]`);
+    if (savedBox) {
+        savedBox.classList.add('selected');
+    }
+}
+
+// 4. 각 기체 박스에 이벤트 추가하기
+selectionBoxes.forEach(box => {
+    
+    // --- 4-A. 마우스 호버 사운드 추가 ---
+    box.addEventListener('mouseenter', () => {
+        hoverSound.currentTime = 0;
+        hoverSound.play();
+    });
+    // --- ---
+
+    // 4-B. 기존 클릭 이벤트 (localStorage 저장)
+    box.addEventListener('click', () => {
+        
+        // --- 4-C. 클릭 사운드 재생 추가 ---
+        clickSound.currentTime = 0;
+        clickSound.play();
+        // --- ---
+        
+        // (A) 일단 모든 박스에서 'selected' 클래스 제거
+        selectionBoxes.forEach(b => b.classList.remove('selected'));
+        
+        // (B) 지금 클릭한 박스에만 'selected' 클래스 추가
+        box.classList.add('selected');
+        
+        // (C) 가장 중요: 클릭한 기체의 ID (data-plane-id)를 localStorage에 저장
+        const planeId = box.dataset.planeId;
+        localStorage.setItem('selectedAirplane', planeId);
+        
+        console.log(`기체 선택됨: ${planeId}`);
+    });
+});
+```
+
+hangar.html
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>격납고 - PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/main_layout.css">
+    <link rel="stylesheet" href="assets/css/hangar.css">
+</head>
+<body>
+
+    <div class="main-content">
+
+        <div class="hangar-container">
+            <h2>기체 선택</h2>
+            
+            <div class="airplane-selection">
+                <div class="airplane-box" data-plane-id="airplane1">
+                    <div class="airplane-image airplane1-img"></div> 
+                    <h3>TYPE-A: Striker</h3>
+                    <p>표준형 기체. 밸런스가 잡혀있습니다.</p>
+                </div>
+                
+                <div class="airplane-box" data-plane-id="airplane2">
+                    <div class="airplane-image airplane2-img"></div> 
+                    <h3>TYPE-B: Interceptor</h3>
+                    <p>탱커형 기체. 속도가 느리지만 방어력이 높습니다.</p>
+                </div>
+            </div>
+            
+            <a href="main.html" class="back-btn">
+                &laquo; 메인 메뉴로
+            </a>
+        </div>
+    </div>
+    
+    <script src="assets/js/hangar.js"></script>
+</body>
+</html>
+```
+
+hangar.css
+```
+/* assets/css/hangar.css */
+
+/* .stage-list-container 스타일 재사용 */
+.hangar-container {
+    width: 90%;
+    max-width: 800px; /* 두 기체가 보이도록 너비 조절 */
+    padding: 20px 30px;
+    background-color: rgba(0, 0, 0, 0.75); 
+    border-radius: 10px;
+    border: 2px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    gap: 25px; 
+}
+
+.hangar-container h2 {
+    font-size: 2.5rem;
+    color: white;
+    text-align: center;
+    margin: 0 0 10px 0;
+    text-shadow: 2px 2px 4px #000;
+}
+
+/* 기체 선택 영역 */
+.airplane-selection {
+    display: flex;
+    justify-content: space-around; /* 양 옆으로 배치 */
+    gap: 20px;
+}
+
+/* 개별 기체 카드 */
+.airplane-box {
+    background-color: #222;
+    border: 3px solid #888;
+    border-radius: 10px;
+    padding: 20px;
+    width: 45%;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.airplane-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.5rem;
+    color: #eee;
+}
+
+.airplane-box p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+/* --- 애니메이션 적용 부분 --- */
+
+/* 기체 이미지 표시용 div (공통 스타일) */
+.airplane-box .airplane-image {
+    width: 100%;
+    max-width: 250px; /* 이미지 최대 크기 */
+    height: 250px; /* 이미지 높이 고정 */
+    margin: 0 auto 15px auto; /* 중앙 정렬 */
+    background-size: contain; /* 이미지가 잘리지 않고 div에 맞춰지도록 */
+    background-repeat: no-repeat;
+    background-position: center;
+    border-bottom: 2px solid #555;
+    padding-bottom: 15px;
+}
+
+/* airplane1의 기본 이미지 */
+.airplane-box .airplane1-img {
+    background-image: url('../images/player/player1_frame2.png'); 
+}
+
+/* airplane1 호버 시 애니메이션 */
+.airplane-box[data-plane-id="airplane1"]:hover .airplane1-img {
+    animation: engineFlameAnimation 0.6s steps(4) infinite;
+}
+
+/* @keyframes 정의: player1 엔진 불꽃 */
+@keyframes engineFlameAnimation {
+    0% { background-image: url('../images/player/player1_frame1.png'); }
+    25% { background-image: url('../images/player/player1_frame3.png'); }
+    50% { background-image: url('../images/player/player1_frame4.png'); }
+    75% { background-image: url('../images/player/player1_frame3.png'); }
+    100% { background-image: url('../images/player/player1_frame1.png'); }
+}
+
+
+/* ▼▼▼ player2 스타일 시작 (확장자 .png로 수정) ▼▼▼ */
+
+/* airplane2의 기본 이미지 (가만히 있을 때) */
+/* 불꽃이 없는 'player2_frame3.png'로 변경 */
+.airplane-box .airplane2-img {
+    background-image: url('../images/player/player2_frame3.png'); 
+}
+
+/* airplane2 호버 시 애니메이션 */
+.airplane-box[data-plane-id="airplane2"]:hover .airplane2-img {
+    animation: engineFlameAnimationPlayer2 0.6s steps(4) infinite;
+}
+
+/* @keyframes 정의: player2 엔진 불꽃 */
+/* player1처럼 불꽃이 깜빡이도록 (1 -> 2 -> 4 -> 2 -> 1) 프레임 순서 변경 */
+@keyframes engineFlameAnimationPlayer2 {
+    0% { background-image: url('../images/player/player2_frame1.png'); } /* 큰 불꽃 */
+    25% { background-image: url('../images/player/player2_frame2.png'); } /* 중간 불꽃 */
+    50% { background-image: url('../images/player/player2_frame4.png'); } /* 작은 불꽃 */
+    75% { background-image: url('../images/player/player2_frame2.png'); } /* 중간 불꽃 */
+    100% { background-image: url('../images/player/player2_frame1.png'); } /* 큰 불꽃 */
+}
+
+/* ▲▲▲ player2 스타일 끝 ▲▲▲ */
+
+
+/* 마우스 올렸을 때 카드 확대 */
+.airplane-box:hover {
+    transform: scale(1.03);
+    border-color: #fff;
+}
+
+/* 선택되었을 때의 스타일 (JS로 제어) */
+.airplane-box.selected {
+    background-color: #004a9e; /* 파란색 계열 */
+    border-color: #8ec5fc;
+    box-shadow: 0 0 20px rgba(142, 197, 252, 0.7);
+}
+
+/* 뒤로가기 버튼 */
+.back-btn {
+    margin-top: 10px;
+    font-size: 1rem;
+    color: #ddd;
+    text-decoration: none;
+    text-align: center;
+    transition: color 0.2s;
+}
+
+.back-btn:hover {
+    color: white;
+    text-decoration: underline;
+}
+```
+
+select_stage.js (새파일)
+```
+// assets/js/select_stage.js
+
+// 1. 사운드 파일 로드
+const hoverSound = new Audio('assets/audio/chiose.mp3');
+const clickSound = new Audio('assets/audio/pick.mp3');
+
+// 2. 난이도 선택 버튼들 가져오기 ('.stage-btn')
+const difficultyButtons = document.querySelectorAll('.stage-btn');
+
+difficultyButtons.forEach(button => {
+    // 3. 마우스 올렸을 때 (chiose.mp3)
+    button.addEventListener('mouseenter', () => {
+        hoverSound.currentTime = 0; // 소리 초기화
+        hoverSound.play();
+    });
+
+    // 4. 클릭했을 때 (pick.mp3)
+    button.addEventListener('click', (event) => {
+        // (A) 기본 링크 이동을 즉시 막음
+        event.preventDefault(); 
+        
+        // (B) 클릭 사운드 재생
+        clickSound.currentTime = 0;
+        clickSound.play();
+        
+        // (C) 이동할 주소(href) 저장
+        const destination = event.currentTarget.href;
+        
+        // (D) 사운드가 재생될 시간(0.5초)을 기다린 후 페이지 이동
+        setTimeout(() => {
+            window.location.href = destination;
+        }, 500); // 0.5초 지연
+    });
+});
+```
+
+select_stage.html
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STAGE SELECT - PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/main_layout.css">
+    <link rel="stylesheet" href="assets/css/stage.css">
+</head>
+<body>
+
+    <div class="main-content">
+
+        <div class="stage-select-options">
+            <h2>전장 선택</h2>
+            
+            <a href="stage_list_easy.html" class="stage-btn easy">
+                아침 <span>(Easy Mode)</span>
+            </a>
+            
+            <a href="stage_list_hard.html" class="stage-btn hard">
+                밤 <span>(Hard Mode)</span>
+            </a>
+            
+            <a href="main.html" class="back-btn">
+                &laquo; 뒤로가기
+            </a>
+        </div>
+
+    </div>
+    
+    <script src="assets/js/select_stage.js"></script>
+</body>
+</html>
+```
+
+stage_list_hard.js
+```
+// assets/js/stage_list_hard.js
+
+// --- 1. 사운드 파일 로드 ---
+const hoverSound = new Audio('assets/audio/chiose.mp3');
+const clickSound = new Audio('assets/audio/pick.mp3');
+
+// --- 2. 스테이지 버튼들 가져오기 ---
+const stageButtons = document.querySelectorAll('.stage-box');
+
+// --- 3. 각 버튼에 링크 설정 및 사운드 이벤트 추가 ---
+stageButtons.forEach(button => {
+    
+    // --- (A) 잠겼는지 먼저 확인 ---
+    const isLocked = button.classList.contains('locked');
+
+    // --- (B) 링크 설정 (기존과 동일) ---
+    if (isLocked) {
+        button.href = '#';
+    } else {
+        const stageNumber = button.dataset.stage; // data-stage="1"
+        button.href = `game.html?difficulty=hard&stage=${stageNumber}`;
+    }
+
+    // --- (C) 마우스 호버 사운드 (수정) ---
+    button.addEventListener('mouseenter', () => {
+        // ▼▼▼ 잠긴 버튼이면 아무것도 안 함 ▼▼▼
+        if (isLocked) return;
+        
+        hoverSound.currentTime = 0;
+        hoverSound.play();
+    });
+
+    // --- (D) 클릭 사운드 및 지연 이동 (수정) ---
+    button.addEventListener('click', (event) => {
+        // (1) 기본 이동 막기
+        event.preventDefault();
+        
+        // ▼▼▼ 잠긴 버튼이면 아무것도 안 함 ▼▼▼
+        if (isLocked) return;
+        
+        // (3) 안 잠긴 버튼: 클릭 소리 재생 + 0.5초 후 이동
+        clickSound.currentTime = 0;
+        clickSound.play();
+        
+        const destination = button.href;
+        
+        setTimeout(() => {
+            window.location.href = destination;
+        }, 500); // 0.5초 지연
+    });
+});
+```
+
+stage_list_easy.js
+```
+// assets/js/stage_list_easy.js
+
+// --- 1. 사운드 파일 로드 ---
+const hoverSound = new Audio('assets/audio/chiose.mp3');
+const clickSound = new Audio('assets/audio/pick.mp3');
+
+// --- 2. 스테이지 버튼들 가져오기 ---
+const stageButtons = document.querySelectorAll('.stage-box');
+
+// --- 3. 각 버튼에 링크 설정 및 사운드 이벤트 추가 ---
+stageButtons.forEach(button => {
+    
+    // --- (A) 잠겼는지 먼저 확인 ---
+    const isLocked = button.classList.contains('locked');
+
+    // --- (B) 링크 설정 (기존과 동일) ---
+    if (isLocked) {
+        button.href = '#';
+    } else {
+        const stageNumber = button.dataset.stage; // data-stage="1"
+        button.href = `game.html?difficulty=easy&stage=${stageNumber}`;
+    }
+
+    // --- (C) 마우스 호버 사운드 (수정) ---
+    button.addEventListener('mouseenter', () => {
+        // ▼▼▼ 잠긴 버튼이면 아무것도 안 함 ▼▼▼
+        if (isLocked) return;
+        
+        hoverSound.currentTime = 0;
+        hoverSound.play();
+    });
+
+    // --- (D) 클릭 사운드 및 지연 이동 (수정) ---
+    button.addEventListener('click', (event) => {
+        // (1) 기본 이동 막기
+        event.preventDefault();
+        
+        // ▼▼▼ 잠긴 버튼이면 아무것도 안 함 ▼▼▼
+        if (isLocked) return;
+        
+        // (3) 안 잠긴 버튼: 클릭 소리 재생 + 0.5초 후 이동
+        clickSound.currentTime = 0;
+        clickSound.play();
+        
+        const destination = button.href;
+        
+        setTimeout(() => {
+            window.location.href = destination;
+        }, 500); // 0.5초 지연
+    });
+});
+```
+
+
+
+
 
 
 
