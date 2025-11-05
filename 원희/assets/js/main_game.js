@@ -1,4 +1,4 @@
-// main_game.js
+// assets/js/main_game.js
 
 // --- 1. HTML 요소들 가져오기 ---
 const settingsModal = document.getElementById('settings-modal');
@@ -74,4 +74,40 @@ controlButtonContainer.addEventListener('click', (event) => {
 
     // (선택 사항) 사용자의 선택을 브라우저에 저장하기
     // localStorage.setItem('controlScheme', selectedControl);
+});
+
+
+// --- 5. 메인 메뉴 사운드 추가 ---
+
+// 1. 사운드 파일 로드
+const hoverSound = new Audio('assets/audio/chiose.mp3');
+const clickSound = new Audio('assets/audio/pick.mp3');
+
+// 2. 메인 버튼들 가져오기
+const menuButtons = document.querySelectorAll('.menu-btn');
+
+menuButtons.forEach(button => {
+    // 3. 마우스 올렸을 때 (chiose.mp3)
+    button.addEventListener('mouseenter', () => {
+        hoverSound.currentTime = 0; // 소리 초기화 (연속 호버 대비)
+        hoverSound.play();
+    });
+
+    // 4. 클릭했을 때 (pick.mp3)
+    button.addEventListener('click', (event) => {
+        // (A) 기본 링크 이동을 즉시 막음
+        event.preventDefault(); 
+        
+        // (B) 클릭 사운드 재생
+        clickSound.currentTime = 0;
+        clickSound.play();
+        
+        // (C) 이동할 주소(href) 저장
+        const destination = event.currentTarget.href;
+        
+        // (D) 사운드가 재생될 시간(0.5초)을 기다린 후 페이지 이동
+        setTimeout(() => {
+            window.location.href = destination;
+        }, 500); // 0.5초 지연 (pick.mp3 길이만큼 조절)
+    });
 });
