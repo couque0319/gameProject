@@ -1,0 +1,29 @@
+<!-- 핵심: .airplane-box + data-plane-id, airplane1은 div.airplane1-img, airplane2는 <img> -->
+<div class="hangar-container">
+  <h2>행거 - 전투기 선택</h2>
+
+  <div class="airplane-selection">
+    <!-- airplane1 -->
+    <button class="airplane-box" type="button" data-plane-id="airplane1" aria-pressed="false">
+      <h3>Falcon Mk.I</h3>
+      <!-- CSS가 기대하는 구조: div.airplane-image.airplane1-img -->
+      <div class="airplane-image airplane1-img" aria-hidden="true"></div>
+      <p>속도: ★★★★☆ / 체력: ★★★☆☆ / 샷: 2연사</p>
+    </button>
+
+    <!-- airplane2 -->
+    <button class="airplane-box" type="button" data-plane-id="airplane2" aria-pressed="false">
+      <h3>Guardian Mk.II</h3>
+      <!-- CSS가 img를 기대하므로 img 사용 -->
+      <img src="images/player/player2.png" alt="Guardian Mk.II" />
+      <p>속도: ★★★☆☆ / 체력: ★★★★★ / 샷: 3-way</p>
+    </button>
+  </div>
+
+  <div style="text-align:center;margin-top:16px;">
+    <button id="btn-plane-confirm">스테이지 선택으로</button>
+  </div>
+  <a class="back-btn" href="main.html">← 돌아가기</a>
+</div>
+
+<script src="hangar.js"></script>
