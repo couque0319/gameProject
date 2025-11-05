@@ -3536,9 +3536,97 @@ stageButtons.forEach(button => {
 
 <img width="1855" height="889" alt="image" src="https://github.com/user-attachments/assets/ac8cedf1-7e3a-434a-9069-94f01262cdbc" />
 
+intro.html
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/intro.css">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
 
+    <div class="splash-screen">
+        <div class="splash-content">
+            <h1 class="game-title">PROJECT: DESTROYER</h1>
+            <p class="start-message">Touch To Start</p>
+        </div>
+    </div>
 
+    <audio id="intro-music" src="assets/audio/intro_music.mp3" loop muted autoplay></audio>
 
+    <script src="assets/js/script.js"></script>
+    
+</body>
+</html>
+```
+
+intro.css
+```
+/* assets/css/intro.css */
+
+/* ▼▼▼ .intro-screen을 .splash-screen으로 수정 ▼▼▼ */
+.splash-screen {
+    background-image: url('../images/intro_image.png');
+    height: 100vh;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    
+    /* 폰트 적용을 위해 기본 색상/그림자 일부 변경 */
+    color: white; 
+    text-shadow: 0 0 10px rgba(0,255,255,0.7), 0 0 20px rgba(0,255,255,0.5); /* 네온 효과 */
+}
+
+.splash-content {
+    color: white;
+}
+
+/* ▼▼▼ h1을 .game-title 클래스로 변경하고 폰트 적용 ▼▼▼ */
+.splash-content .game-title {
+    font-size: 3.5rem; /* 기존 크기 유지 */
+    margin-bottom: 20px;
+    
+    /* Orbitron 폰트 적용 */
+    font-family: 'Orbitron', sans-serif; 
+    font-weight: 700;
+    color: #f0f8ff; 
+    text-shadow: 0 0 5px rgba(255,255,255,0.8), 0 0 15px rgba(0,200,255,0.6), 0 0 30px rgba(0,200,255,0.4);
+    animation: none; /* 기존 h1 애니메이션 제거 */
+}
+
+/* ▼▼▼ p를 .start-message 클래스로 변경하고 폰트 적용 ▼▼▼ */
+.splash-content .start-message {
+    font-size: 1.75rem; /* 기존 크기 유지 */
+    margin-top: 20px; 
+    
+    /* Orbitron 폰트 적용 */
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 400;
+    color: #00ffff; /* 시안색 */
+    text-shadow: 0 0 5px rgba(0,255,255,0.9), 0 0 10px rgba(0,255,255,0.7);
+    
+    /* 기존 깜빡임 애니메이션 (blink) */
+    animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+    100% { opacity: 1; }
+}
+```
 
 
 
