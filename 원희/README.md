@@ -3478,7 +3478,57 @@ stageButtons.forEach(button => {
 });
 ```
 
-
+```
+📁 Webgame/
+    │
+    ├── 📄 hangar.html
+    ├── 📄 intro.html
+    ├── 📄 main.html
+    ├── 📄 select_stage.html
+    ├── 📄 stage_list_easy.html
+    ├── 📄 stage_list_hard.html
+    │
+    └── 📁 assets/
+        │
+        ├── 📁 css/
+        │   ├── 📄 base.css
+        │   ├── 📄 hangar.css
+        │   ├── 📄 intro.css
+        │   ├── 📄 main.css
+        │   ├── 📄 main_layout.css
+        │   ├── 📄 stage.css
+        │   └── 📄 stage_list.css
+        │
+        ├── 📁 js/
+        │   ├── 📄 hangar.js
+        │   ├── 📄 main_game.js
+        │   ├── 📄 script.js (인트로 JS)
+        │   ├── 📄 select_stage.js  <-- (방금 추가한 파일)
+        │   ├── 📄 stage_list_easy.js
+        │   └── 📄 stage_list_hard.js
+        │
+        ├── 📁 images/
+        │   ├── 🖼️ intro_image.png
+        │   ├── 🖼️ main.jpg
+        │   ├── 🖼️ moring.jpg
+        │   ├── 🖼️ night.jpg
+        │   │
+        │   └── 📁 player/
+        │       ├── 🖼️ player1_frame1.png
+        │       ├── 🖼️ player1_frame2.png
+        │       ├── 🖼️ player1_frame3.png
+        │       ├── 🖼️ player1_frame4.png
+        │       ├── 🖼️ player2_frame1.png
+        │       ├── 🖼️ player2_frame2.png
+        │       ├── 🖼️ player2_frame3.png
+        │       └── 🖼️ player2_frame4.png
+        │
+        └── 📁 audio/
+            ├── 🎵 chiose.mp3
+            ├── 🎵 intro_music.mp3
+            ├── 🎵 main_music.mp3
+            └── 🎵 pick.mp3
+```
 
 
 
