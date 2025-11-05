@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>허접 탑뷰 비행슈팅</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #222;
+        }
+
+        canvas {
+            border: 2px solid #fff;
+            background-color: #000;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+</head>
+
+<body>
+
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 480, // 게임 화면 너비 (예: 모바일 화면)
+            height: 640, // 게임 화면 높이
+            parent: 'game-container', // HTML에 id='game-container'인 div가 없으면 body에 붙습니다.
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    debug: false // 충돌 박스를 보려면 true
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        const game = new Phaser.Game(config);
+
+
+        let player;
+        let bullets;
+        let enemies;
+        let lastFired = 0; // 총알 발사 딜레이를 위한 시간
+        let score = 0;
+        let scoreText;
+        let gameOver = false;
+
+        //--------수정1-----------------------------------------------
+        let battleOn = true;      // 전투 상태 플래그 (ON/OFF)
+        let enemySpawnEvent;      // 적 스폰 타이머 저장용
+        let carrierEventOn = false;
+        let docking = {
+            active: false,
+            carrier: null,
+            guide: null,
+            guideLeftX: 200,
+            guideRightX: 280,
+            tolerance: 18,
+            descentPxPerSec: 60,
+            targetY: 0,
+            lockOffsetPx: 0   // 👈 추가: ‘아래에서 얼마나 위’를 락 판정선으로 쓸지
+        };
+        let sway = {
+            active: false,
+            locked: false,        // 접촉 후 고정 상태
+            playerBaseX: null,    // 입력으로 정한 기준 x
+            playerPhase: 0,       // 플레이어 흔들림 위상
+            playerAmp: 14,        // 플레이어 흔들림 진폭(px)
+            playerHz: 0.9,        // 플레이어 흔들림 주파수(Hz)
+            carrierAmp: 26,       // 항모 흔들림 진폭(px)
+            carrierTween: null    // 항모 좌우 드리프트 트윈 핸들
+        };
+        let __engineShutdownPlayed = false;
+        let __approachBannerShown = false; //ver2
+        let weapon = {           //ver2
+            fireRateMs: 200,
+            bulletSpeed: 400,
+            bulletKey: 'bullet_blue',
+            pattern: 1,
+            spreadDeg: 10,
+            damage: 1,
+            hitboxScaleX: 1.0,   // 🔸 X축 피격 판정 배수 (1.0=기본, 1.5/2.5 등)
+        };
+        let gold = 999;         //ver2
+        let goldHUDText = null; //ver2
+        let shop = {             //ver2
+            active: false,
+            depthBase: 220,
+
+            // 배치/컨테이너 /ver2
+            container: null,
+            bg: null,
+            keys: null,
+            slots: [],
+
+            // 구매 1회성 / 단계형 //ver2
+            purchasedOnce: { q: false, w: false, e: false, r: false },
+            tier: { a: 0, s: 0, d: 0 },
+
+            // 전역 진행바 (패널 하단 1개) //ver2
+            holdingKey: null,
+            holdingStart: null,
+            holdMsRequired: 2000,
+            holdBarBg: null,
+            holdBar: null,
+            holdLabel: null,
+            holdHint: null,
+        };
+        let launch = {  //ver2
+            active: false,
+            lines: [],
+            nextRemoveAt: 0,
+            removeInterval: 300, // 0.3초 간격 제거
+            bigTitle: null       // "Engine ignition Start"
+        };
+        let __engineIgnitionPlayed = false; //ver2
+
+        // 단발 해금(QWER) & 3단계 업글(ASD) 상태          //ver2
+        shop.purchasedOnce = { '1': false, '2': false, '3': false, '4': false };
+        shop.tier = { a: 0, s: 0, d: 0 }; // 5=a(연사), 6=s(데미지), 7=d(체력)
+
+        function spawnEnemy() {
+            if (gameOver || !battleOn) return;
+
+            let x = Phaser.Math.Between(50, config.width - 50);
+            let enemy = enemies.create(x, -50, 'enemy')
+                .setOrigin(0.5, 0.5)
+                .setDisplaySize(30, 30)
+                .setTint(0xff0000);
+
+            enemy.setVelocityY(Phaser.Math.Between(50, 150));
+            enemy.body.setSize(30, 30);
+            enemy.body.collideWorldBounds = false;
+            enemy.body.bounce.set(1);
+        }
+
+        function setBattle(on) {
+            battleOn = on;
+            if (enemySpawnEvent) enemySpawnEvent.paused = !on; // 스폰 타이머 일시정지/재개
+        }
+
+        function showCarrierApproachBanner(scene) { //ver2
+            const cx = config.width / 2;
+            const cy = Math.round(config.height * 0.42);
+
+            const t = scene.add.text(cx, cy, 'CARRIER APPROACH!', {
+                fontSize: '32px',
+                fontStyle: 'bold',
+                color: '#fff7d6',
+                stroke: '#0b1a2a',
+                strokeThickness: 6,
+                fontFamily: 'monospace'
+            })
+                .setOrigin(0.5)
+                .setDepth(520)
+                .setAlpha(0)
+                .setScale(0.92);
+
+            // 등장 (느리게)
+            scene.tweens.add({
+                targets: t,
+                alpha: { from: 0, to: 1 },
+                y: '-=10',
+                duration: 600, // ← 300 → 600으로 2배
+                ease: 'Cubic.easeOut'
+            });
+
+            // 펌핑 (느리게)
+            scene.tweens.add({
+                targets: t,
+                scale: { from: 0.92, to: 1.0 },
+                yoyo: true,
+                duration: 1300, // ← 650 → 1300으로 2배
+                ease: 'Sine.easeInOut',
+                repeat: 1
+            });
+
+            // 사라짐 (느리게)
+            scene.time.delayedCall(2800, () => { // ← 1400 → 2800
+                scene.tweens.add({
+                    targets: t,
+                    alpha: 0,
+                    y: '-=6',
+                    duration: 520, // ← 260 → 520
+                    ease: 'Cubic.easeIn',
+                    onComplete: () => t.destroy()
+                });
+            });
+        }
+
+        function startCarrierApproach(scene) { //ver2
+            if (carrierEventOn) return;
+            carrierEventOn = true;
+
+            setBattle(false);
+
+            // 1.5초 후 "CARRIER APPROACH!" 출력 (기존 그대로)
+            scene.time.delayedCall(1500, () => {
+                if (!__approachBannerShown) {
+                    __approachBannerShown = true;
+                    showCarrierApproachBanner(scene);
+                }
+            });
+
+            // 🔸 항모 등장은 2초 뒤에 시작하도록 딜레이 추가
+            scene.time.delayedCall(2000, () => {
+                const carrierTexture = scene.textures.get('carrier').getSourceImage();
+                const carrierHeight = carrierTexture.height;
+
+                const carrier = scene.add.image(config.width / 2, config.height + carrierHeight, 'carrier')
+                    .setOrigin(0.5, 1)
+                    .setScale(0.48)
+                    .setDepth(20);
+
+                // 기존 트윈 시퀀스 전체 ↓ 그대로 유지
+                scene.tweens.add({
+                    targets: carrier,
+                    y: -80,
+                    duration: 6100,
+                    ease: 'Sine.easeInOut',
+                    onComplete: () => {
+                        const VISIBLE_RATIO = 2 / 5;
+                        const srcH = scene.textures.get('carrier').getSourceImage().height;
+                        carrier.setScale(1.0);
+                        carrier.y = -srcH * 0.6;
+                        carrier.alpha = 0;
+
+                        const targetVisibleY = carrier.displayHeight * VISIBLE_RATIO;
+
+                        scene.tweens.add({
+                            targets: carrier,
+                            y: targetVisibleY,
+                            alpha: 1,
+                            duration: 3000,
+                            ease: 'Cubic.easeOut',
+                            onComplete: () => {
+                                startCarrierDocking(scene, carrier);
+                            }
+                        });
+
+                        scene.tweens.add({
+                            targets: carrier,
+                            scaleX: 1.02,
+                            scaleY: 1.02,
+                            duration: 700,
+                            yoyo: true,
+                            repeat: 1,
+                            ease: 'Sine.easeInOut'
+                        });
+                    }
+                });
+            });
+        }
+
+
+        function drawGuides(scene, aligned) {
+            if (!docking.guide) {
+                docking.guide = scene.add.graphics().setDepth(5); // 유도선은 가장 뒤
+            }
+            const g = docking.guide;
+            g.clear();
+
+            const color = aligned ? 0x33e0ff : 0x3399ff;
+            g.lineStyle(3, color, 1);
+
+            // ----- 여기부터 '상단 반만 자르기' 로직 -----
+            // carrier의 세로 중앙 좌표 (origin 0.5, 1 이므로 y - displayHeight/2)
+            let topCropY = 0;
+            if (docking.carrier) {
+                const carrierMidY = docking.carrier.y - docking.carrier.displayHeight / 2;
+                // 항모의 '중앙'이 화면 중앙을 지나면 위쪽을 잘라내고 하단만 남김
+                if (carrierMidY >= config.height / 2) {
+                    topCropY = config.height / 2; // 화면 중앙부터 아래만 그림
+                }
+            }
+            // -----------------------------------------
+
+            // 점선처럼 보이게 세그먼트로 두 줄 모두 그림
+            const seg = 12, gap = 8, bottom = config.height;
+
+            // 왼쪽 라인
+            let y = topCropY;
+            while (y < bottom) {
+                g.strokeLineShape(new Phaser.Geom.Line(docking.guideLeftX, y, docking.guideLeftX, Math.min(y + seg, bottom)));
+                y += seg + gap;
+            }
+
+            // 오른쪽 라인
+            y = topCropY;
+            while (y < bottom) {
+                g.strokeLineShape(new Phaser.Geom.Line(docking.guideRightX, y, docking.guideRightX, Math.min(y + seg, bottom)));
+                y += seg + gap;
+            }
+        }
+
+        function startCarrierDocking(scene, carrier) {
+            docking.active = true;
+            docking.carrier = carrier;
+
+            // 중앙 기준 좌우로 벌린 두 선 (원하면 수치 조정)
+            const center = config.width / 2;
+            const halfGap = 24; // 라인 간격 절반 (총 간격 80px)
+            docking.guideLeftX = center - halfGap;
+            docking.guideRightX = center + halfGap;
+
+            docking.tolerance = 12;
+            docking.descentPxPerSec = 40;
+            docking.targetY = docking.carrier.displayHeight * 0.95;
+
+            drawGuides(scene, false);
+
+            sway.active = true; //흔들림 시작
+            sway.locked = false;
+            if (sway.carrierTween) { sway.carrierTween.remove(); sway.carrierTween = null; }
+
+            docking.lockOffsetPx = docking.carrier.displayHeight * 0.3;
+            docking.ascentPxPerSec = 20;    // 정렬 안 됐을 때 위로 올라가는 속도(튜닝 가능)
+            docking.minY = carrier.y;       // 도킹 시작 당시의 y보다 더 위로는 못 올라가게 상한
+        }
+
+        function lockToCenter(scene) {
+            sway.locked = true;          // 조작 막음
+            sway.active = true;          // (흔들림 시스템은 유지)
+            setBattle(false);            // 전투는 계속 OFF 유지
+
+            const cx = config.width / 2;
+
+            // 유도선/항모/플레이어 모두 중앙 정렬
+            // (항모는 부드럽게, 플레이어는 짧게)
+            if (sway.carrierTween) { sway.carrierTween.remove(); sway.carrierTween = null; }
+            scene.tweens.add({
+                targets: docking.carrier,
+                x: cx,
+                duration: 600,
+                ease: 'Sine.easeInOut'
+            });
+
+            scene.tweens.add({
+                targets: player,
+                x: cx,
+                duration: 300,
+                ease: 'Sine.easeOut'
+            });
+
+            // 플레이어 입력 무시: 기준 x도 중앙으로 고정
+            sway.playerBaseX = cx;
+
+            // (선택) 유도선도 중앙에 맞춘다면:
+            docking.guideLeftX = cx - (docking.guideRightX - docking.guideLeftX) / 2;
+            docking.guideRightX = cx + (docking.guideRightX - docking.guideLeftX) / 2;
+        }
+
+        function playEngineShutdown(scene, opts = {}) {
+            const openDelayMs = opts.delayMs ?? 3000; // 마지막 텍스처(3000ms) 이후 약간의 여유
+
+            if (__engineShutdownPlayed) return;
+            __engineShutdownPlayed = true;
+
+            // 안전: 입력/전투 잠깐 묶기
+            setBattle(false);
+            sway.locked = true;
+
+            // 단계별 텍스처 교체 (소등: 2 → 1 → 0)
+            scene.time.delayedCall(500, () => player.setTexture('playerShip_2'));
+            scene.time.delayedCall(1000, () => player.setTexture('playerShip_1'));
+            scene.time.delayedCall(1500, () => player.setTexture('playerShip_0'));
+
+            // 🔸 상점은 엔진 소화 연출이 끝난 뒤에 오픈
+            scene.time.delayedCall(openDelayMs, () => {
+                // 중복 방지: 이미 상점 열렸거나 씬이 파괴된 경우 스킵
+                if (!scene || !scene.scene || scene.scene.isPaused()) return;
+                if (shop.active) return;
+                openTempShop(scene);
+            });
+        }
+
+
+        function setHitboxScaleX(mult) { //ver2
+            // 1.0 ~ 3.0 정도 범위 추천 (원하면 조절)
+            weapon.hitboxScaleX = Phaser.Math.Clamp(Number(mult) || 1.0, 1.0, 3.0);
+        }
+
+        function openTempShop(scene) { //ver2
+            if (shop.active) return;
+            shop.active = true;
+
+            const panelW = Math.floor(config.width * 0.9);
+            const panelH = 320;
+            const targetY = config.height / 2 + 10;
+
+            // 반투명 배경 (고정)
+            shop.bg = scene.add.rectangle(
+                config.width / 2, config.height / 2, config.width, config.height, 0x000000, 0.45
+            ).setDepth(shop.depthBase);
+
+            // 컨테이너 (패널+슬롯+하단바 전부 담음)
+            shop.container = scene.add.container(config.width / 2, -panelH).setDepth(shop.depthBase + 1);
+
+            // 큰 사각형 패널 (컨테이너 중심 기준)
+            const panel = scene.add.rectangle(0, 0, panelW, panelH, 0x111122, 0.95)
+                .setStrokeStyle(2, 0x66ccff);
+            shop.container.add(panel);
+
+            // 키 등록
+            shop.keys = scene.input.keyboard.addKeys({
+                '1': Phaser.Input.Keyboard.KeyCodes.ONE,
+                '2': Phaser.Input.Keyboard.KeyCodes.TWO,
+                '3': Phaser.Input.Keyboard.KeyCodes.THREE,
+                '4': Phaser.Input.Keyboard.KeyCodes.FOUR,
+                '5': Phaser.Input.Keyboard.KeyCodes.FIVE,
+                '6': Phaser.Input.Keyboard.KeyCodes.SIX,
+                '7': Phaser.Input.Keyboard.KeyCodes.SEVEN,
+                '8': Phaser.Input.Keyboard.KeyCodes.EIGHT,
+                'space': Phaser.Input.Keyboard.KeyCodes.SPACE,
+            });
+
+            // 슬롯들 (패널 내부에 완전 배치)
+            const cols = 4, rows = 2, pad = 16;
+            const cellW = Math.floor((panelW - pad * (cols + 1)) / cols);
+            const cellH = 88;
+
+            const P = shop.purchasedOnce;
+            const T = shop.tier;
+
+            const labels = [
+                // 1행: 1 2 3 4
+                {
+                    key: '1', title: '기관포 2발', price: 1,
+                    canBuy: () => !P['1'],
+                    onBuy: () => { P['1'] = true; showUpgradeToast(scene, '기관포 2발'); __refreshPurchasedCheck('1'); __refreshLockStates(); }
+                },
+                {
+                    key: '2', title: '기관포 3발', price: 1,
+                    canBuy: () => P['1'] && !P['2'],                 // ← 1 선행
+                    onBuy: () => { P['2'] = true; showUpgradeToast(scene, '기관포 3발'); __refreshPurchasedCheck('2'); __refreshLockStates(); }
+                },
+                {
+                    key: '3', title: '미사일 해금', price: 1,
+                    canBuy: () => !P['3'],
+                    onBuy: () => { P['3'] = true; showUpgradeToast(scene, '미사일 해금'); __refreshPurchasedCheck('3'); __refreshLockStates(); }
+                },
+                {
+                    key: '4', title: '미사일 2발', price: 1,
+                    canBuy: () => P['3'] && !P['4'],                 // ← 3 선행
+                    onBuy: () => { P['4'] = true; showUpgradeToast(scene, '미사일 2발'); __refreshPurchasedCheck('4'); __refreshLockStates(); }
+                },
+
+                // 2행: 5 6 7 8
+                {
+                    key: '5', title: '연사력 강화\n', price: 1,
+                    canBuy: () => T.a < 3,
+                    onBuy: () => { T.a++; showUpgradeToast(scene, `연사력 강화 Lv.${T.a}`); __refreshTierDesc('5'); }
+                },
+                {
+                    key: '6', title: '데미지 강화\n', price: 1,
+                    canBuy: () => T.s < 3,
+                    onBuy: () => { T.s++; showUpgradeToast(scene, `데미지 강화 Lv.${T.s}`); __refreshTierDesc('6'); }
+                },
+                {
+                    key: '7', title: '체력 강화\n', price: 1,
+                    canBuy: () => T.d < 3,
+                    onBuy: () => { T.d++; showUpgradeToast(scene, `체력 강화 Lv.${T.d}`); __refreshTierDesc('7'); }
+                },
+                {
+                    key: '8', title: 'empty', price: 1,
+                    canBuy: () => false,
+                    onBuy: () => { }
+                },
+            ];
+
+            shop.slots = [];
+            for (let i = 0; i < labels.length; i++) {
+                const c = i % cols;
+                const r = (i / cols) | 0;
+
+                // 패널 내부 좌상단 기준 (-panelW/2, -panelH/2)
+                const left = -panelW / 2 + pad;
+                const top = -panelH / 2 + pad;
+
+                const x = Math.round(left + c * (cellW + pad) + cellW / 2);
+                const y = Math.round(top + 20 + r * (cellH + pad)); // 위쪽 여백 20
+
+                const rect = scene.add.rectangle(x, y, cellW, cellH, 0x0f2033, 0.95)
+                    .setStrokeStyle(1, 0x66ccff);
+                const title = scene.add.text(x, y - 14, `${labels[i].key} | ₲${labels[i].price ?? 1}`,
+                    { fontSize: '13px', color: '#a8d2ff' }).setOrigin(0.5);
+                const desc = scene.add.text(x, y + 10, labels[i].title,
+                    { fontSize: '14px', color: '#cfe9ff', align: 'center' }).setOrigin(0.5);
+
+                shop.container.add([rect, title, desc]);
+
+                shop.slots.push({
+                    key: labels[i].key.toLowerCase(),
+                    rect, title, desc,
+                    price: labels[i].price ?? 1,
+                    canBuy: labels[i].canBuy ?? (() => true),
+                    onBuy: labels[i].onBuy
+                });
+            }
+
+            ['1', '2', '3', '4'].forEach(__refreshPurchasedCheck);
+            ['5', '6', '7'].forEach(__refreshTierDesc);
+            __refreshLockStates();
+
+            // 하단 전역 진행바/라벨/힌트 (패널 바닥 근처)
+            const barW = panelW - 40;
+            const barY = panelH / 2 - 28;
+            shop.holdBarBg = scene.add.rectangle(0, barY, barW, 8, 0x0a1a2a, 1).setStrokeStyle(1, 0x66ccff);
+            shop.holdBar = scene.add.rectangle(-barW / 2, barY, 0, 6, 0x66ccff, 1).setOrigin(0, 0.5);
+            shop.holdLabel = scene.add.text(0, barY - 16, '', { fontSize: '13px', color: '#cfe9ff' }).setOrigin(0.5);
+            shop.holdHint = scene.add.text(0, barY + 14,
+                'Space : Take Off',
+                { fontSize: '12px', color: '#9cc7ff' }).setOrigin(0.5);
+
+            shop.container.add([shop.holdBarBg, shop.holdBar, shop.holdLabel, shop.holdHint]);
+
+            // 컨테이너 통째로 내려오기
+            scene.tweens.add({
+                targets: shop.container,
+                y: targetY,
+                duration: 700,
+                ease: 'Cubic.easeOut'
+            });
+        }
+
+        function updateTempShop(scene, deltaMs) { //ver2
+            if (!shop.active) return;
+
+            if (goldHUDText) goldHUDText.setText(`Gold: ${gold}`);
+
+            // ★ Space 홀드 우선 처리
+            const spaceObj = shop.keys && shop.keys['space'];
+            if (spaceObj && spaceObj.isDown) {
+                if (shop.holdingKey !== 'space') {
+                    shop.holdingKey = 'space';
+                    shop.holdingStart = scene.time.now;
+                    if (shop.holdBar) shop.holdBar.width = 0;
+                }
+
+                const held = scene.time.now - (shop.holdingStart || scene.time.now);
+                const p = Phaser.Math.Clamp(held / (shop.holdMsRequired || 2000), 0, 1);
+
+                if (shop.holdBar && shop.holdBarBg) {
+                    const full = shop.holdBarBg.width - 2;
+                    shop.holdBar.width = Math.max(0, Math.floor(full * p));
+                }
+                if (shop.holdLabel) shop.holdLabel.setText(`이륙 준비중… ${Math.round(p * 100)}%`);
+
+                if (p >= 1) {
+                    // 이륙!
+                    if (p >= 1) {
+                        closeShopAndWait(scene);     // ← 이 함수로 교체
+                        shop.holdingKey = null;
+                        shop.holdingStart = null;
+                        if (shop.holdBar) shop.holdBar.width = 0;
+                    }
+
+                }
+                return; // ★ 스페이스 처리 중에는 구매 로직 건너뜀
+            }
+
+            // ★ 스페이스 안 누르는 동안은 구매 라벨 비움
+            if (shop.holdLabel) shop.holdLabel.setText('');
+
+            // ---- 이하 기존 구매(1~8) 로직 유지 ----
+            const watchKeys = ['1', '2', '3', '4', '5', '6', '7', '8'];
+            let pressedKey = null;
+            for (const k of watchKeys) {
+                const keyObj = shop.keys && shop.keys[k];
+                if (keyObj && keyObj.isDown) { pressedKey = k; break; }
+            }
+
+            if (!pressedKey) {
+                shop.holdingKey = null;
+                shop.holdingStart = null;
+                if (shop.holdBar) shop.holdBar.width = 0;
+                return;
+            }
+
+            const slot = shop.slots.find(s => s.key === pressedKey);
+            if (!slot) return;
+
+            if (shop.holdingKey !== pressedKey) {
+                shop.holdingKey = pressedKey;
+                shop.holdingStart = scene.time.now;
+                if (shop.holdBar) shop.holdBar.width = 0;
+            }
+
+            const held = scene.time.now - (shop.holdingStart || scene.time.now);
+            const p = Phaser.Math.Clamp(held / (shop.holdMsRequired || 2000), 0, 1);
+
+            if (shop.holdBar && shop.holdBarBg) {
+                const full = shop.holdBarBg.width - 2;
+                shop.holdBar.width = Math.max(0, Math.floor(full * p));
+            }
+            if (shop.holdLabel) shop.holdLabel.setText(`${pressedKey} 구매 중… ${Math.round(p * 100)}%`);
+
+            if (p >= 1) {
+                const price = (typeof slot.price === 'number') ? slot.price : 1;
+                const canBuy = (typeof slot.canBuy === 'function') ? slot.canBuy() : true;
+
+                if (!canBuy) {
+                    shakeSlot(scene, slot);
+                    if (shop.holdLabel) shop.holdLabel.setText('구매 불가');
+                } else if (gold >= price) {
+                    gold -= price;
+                    try { if (typeof slot.onBuy === 'function') slot.onBuy(); } catch (e) { }
+                    flashSlot(scene, slot);
+                    if (shop.holdLabel) shop.holdLabel.setText('구매 완료!');
+                } else {
+                    shakeSlot(scene, slot);
+                    if (shop.holdLabel) shop.holdLabel.setText('골드 부족');
+                }
+
+                shop.holdingKey = null;
+                shop.holdingStart = null;
+                if (shop.holdBar) shop.holdBar.width = 0;
+            }
+        }
+
+
+        // 시각 피드백: 구매 성공 시 반짝
+        function flashSlot(scene, slot) {//ver2
+            scene.tweens.add({
+                targets: [slot.rect],
+                alpha: { from: 1, to: 0.4 },
+                yoyo: true, repeat: 1,
+                duration: 120
+            });
+        }
+
+        // 시각 피드백: 골드 부족 등 실패 시 흔들기
+        function shakeSlot(scene, slot) {//ver2
+            scene.tweens.add({
+                targets: [slot.rect, slot.title, slot.desc],
+                x: `+=8`,
+                yoyo: true, repeat: 3,
+                duration: 40
+            });
+        }
+
+        function showUpgradeToast(scene, label) {//ver2
+            const msg = `${label} 업그레이드 성공`;
+            const t = scene.add.text(config.width / 2, Math.round(config.height * 0.28), msg, {
+                fontSize: '20px', color: '#e6f5ff', fontStyle: 'bold', align: 'center',
+                stroke: '#114466', strokeThickness: 2
+            }).setOrigin(0.5).setDepth(shop.depthBase + 5);
+
+            // 살짝 떠올랐다가 사라지기
+            scene.tweens.add({
+                targets: t,
+                y: '-=18',
+                alpha: { from: 1, to: 0 },
+                duration: 800,
+                ease: 'Cubic.easeOut',
+                onComplete: () => t.destroy()
+            });
+        }
+
+        function __findSlot(keyStr) { //ver2
+            return shop.slots.find(s => s.key === keyStr);
+        }
+
+        function __getSlotByKey(k) { //ver2
+            return shop.slots.find(s => s.key === k);
+        }
+
+        function __refreshPurchasedCheck(k) { //ver2
+            const s = __getSlotByKey(k); if (!s) return;
+            const bought = shop.purchasedOnce[k];
+            const priceStr = bought ? '✅' : `₲${s.price ?? 1}`;
+            s.title.setText(`${k} | ${priceStr}`);
+        }
+
+        // 5~7: 티어 라벨
+        function __refreshTierDesc(k) { //ver2
+            const s = __getSlotByKey(k); if (!s) return;
+
+            // 이름 매핑
+            const name = { '5': '연사력 강화', '6': '데미지 강화', '7': '체력 강화' }[k];
+
+            // 현재 티어 읽기 (tier는 a/s/d로 유지한 너의 구조 그대로 사용)
+            const lv = (k === '5') ? shop.tier.a
+                : (k === '6') ? shop.tier.s
+                    : (k === '7') ? shop.tier.d
+                        : 0;
+
+            const lvText = (lv >= 3) ? 'Lv MAX' : `Lv ${lv + 1}`;
+            s.desc.setText(`${name}\n${lvText}`).setAlign('center');
+        }
+
+        // 2,4: 선행 미충족 잠금 상태 시각화
+        function __refreshLockStates() { //ver2
+            // 2는 1 필요 / 4는 3 필요
+            const need1 = !shop.purchasedOnce['1'];
+            const need3 = !shop.purchasedOnce['3'];
+
+            const lock2 = __getSlotByKey('2');
+            if (lock2) {
+                const locked = need1 && !shop.purchasedOnce['2'];
+                __applyLockedStyle(lock2, locked, locked ? '선행: 1번 필요' : '');
+            }
+
+            const lock4 = __getSlotByKey('4');
+            if (lock4) {
+                const locked = need3 && !shop.purchasedOnce['4'];
+                __applyLockedStyle(lock4, locked, locked ? '선행: 3번 필요' : '');
+            }
+        }
+
+        // 잠금 스타일 공통 처리
+        function __applyLockedStyle(slot, locked, hint) { //ver2
+            const dim = locked ? 0.35 : 1;
+            slot.rect.setAlpha(dim);
+            slot.title.setAlpha(dim);
+            slot.desc.setAlpha(dim);
+
+            // 잠금 힌트 라벨 추가/업데이트
+            if (!slot.lockHint) {
+                slot.lockHint = slot.title.scene.add.text(slot.rect.x, slot.rect.y + slot.rect.height / 2 - 10, '',
+                    { fontSize: '12px', color: '#ffb3b3' }).setOrigin(0.5);
+                shop.container.add(slot.lockHint);
+            }
+            slot.lockHint.setText(locked ? hint : '');
+            slot.lockHint.setAlpha(locked ? 1 : 0);
+        }
+
+        function closeShopAndWait(scene) { //ver2
+            // 패널/배경 제거
+            if (shop.container) {
+                scene.tweens.add({
+                    targets: shop.container,
+                    y: shop.container.y - 80,
+                    alpha: { from: 1, to: 0 },
+                    duration: 300,
+                    ease: 'Cubic.easeIn',
+                    onComplete: () => {
+                        shop.container.destroy();
+                        shop.container = null;
+                    }
+                });
+            }
+            if (shop.bg) {
+                scene.tweens.add({
+                    targets: shop.bg,
+                    alpha: { from: shop.bg.alpha, to: 0 },
+                    duration: 250,
+                    onComplete: () => { shop.bg.destroy(); shop.bg = null; }
+                });
+            }
+
+            // 상태 정리: 상점 비활성화
+            shop.active = false;
+            shop.keys = null;
+            shop.slots = [];
+
+            // 전투/입력은 '대기' 상태로 유지
+            setBattle(false);   // 적 스폰/발사 멈춤
+            sway.active = false;
+            sway.locked = true;
+
+            playPreFlightCheck(scene, () => {
+                startIgnitionUI(scene);
+            });
+        }
+
+        function playPreFlightCheck(scene, onComplete) { //ver2
+            // 딤 배경 (텍스트 뒤, 화면 전체)
+            const dim = scene.add.rectangle(
+                config.width / 2, config.height / 2, config.width, config.height,
+                0x000000, 0.45
+            ).setDepth(295);
+            launch.dim = dim;
+
+            const lines = [
+                "[PRE-FLIGHT CHECK INITIATED]",
+                "WEAPONS : ONLINE",
+                "SHIELD  : ONLINE",
+                "FUEL    : FULL",
+                "AILERONS  : RESPONSIVE",
+                "ELEVATORS : STABLE",
+                "RUDDER    : CALIBRATED",
+                "SYSTEM : ALL GREEN",
+                "READY FOR TAKEOFF"
+            ];
+
+            const startY = config.height * 0.3;
+            const lineSpacing = 28;
+
+            const baseStyle = {
+                fontSize: '20px',
+                fontFamily: 'monospace',
+                color: '#e8fdff'
+            };
+
+            // 👇 여기서 만든 텍스트들을 launch.lines 로 ‘공유’ (나중에 그대로 제거)
+            launch.lines = [];
+            const delayPer = 500;  // 줄당 등장 간격
+            const fadeDur = 400;
+
+            lines.forEach((text, i) => {
+                const t = scene.add.text(config.width / 2, startY + i * lineSpacing, text, baseStyle)
+                    .setOrigin(0.5)
+                    .setAlpha(0)
+                    .setDepth(300)
+                    .setStroke('#0b2a3a', 3)
+                    .setShadow(0, 2, '#001a33', 8, true, true);
+
+                launch.lines.push(t);
+
+                scene.time.delayedCall(delayPer * i, () => {
+                    scene.tweens.add({
+                        targets: t,
+                        alpha: { from: 0, to: 1 },
+                        duration: fadeDur,
+                        ease: 'Cubic.easeOut'
+                    });
+
+                    if (text === "SYSTEM : ALL GREEN") {
+                        scene.tweens.add({
+                            targets: t,
+                            scale: { from: 1, to: 1.12 },
+                            yoyo: true,
+                            duration: 600,
+                            ease: 'Sine.easeInOut'
+                        });
+                    }
+                });
+            });
+
+            // 모든 줄이 등장한 ‘직후’ 제거 단계로 진입
+            const totalShowTime = (lines.length - 1) * delayPer + fadeDur + 250; // 여유 0.25s
+            scene.time.delayedCall(totalShowTime, () => {
+                if (typeof onComplete === 'function') onComplete();
+            });
+        }
+
+
+        function startIgnitionUI(scene) {  //ver2
+            if (launch.active) return;
+            launch.active = true;
+
+            // 이미 playPreFlightCheck 에서 만든 줄들을 그대로 사용
+            launch.nextRemoveAt = scene.time.now + (launch.removeInterval || 300);
+
+            // “Engine ignition Start” 준비(처음엔 숨김)
+            const cx = config.width / 2;
+            const baseY = Math.round(config.height * 0.58);
+            launch.bigTitle = scene.add.text(cx, baseY - 10, 'Engine ignition Start', {
+                fontSize: '32px',
+                color: '#eaf6ff',
+                fontStyle: 'bold',
+                stroke: '#0b1a2a',
+                strokeThickness: 4
+            }).setOrigin(0.5).setDepth(300).setAlpha(0);
+        }
+
+
+        function updateLaunchUI(scene) { //ver2
+            if (!launch.active) return;
+
+            const now = scene.time.now;
+
+            // 0.3초마다 한 줄씩 제거 (위에서부터)
+            if (launch.lines.length > 0 && now >= launch.nextRemoveAt) {
+                const t = launch.lines.shift();
+                if (t) t.destroy();
+                launch.nextRemoveAt = now + launch.removeInterval;
+
+                // 모두 제거 완료 → 타이틀 표시 → 자동 점화
+                if (launch.lines.length === 0) {
+                    scene.tweens.add({
+                        targets: launch.bigTitle,
+                        alpha: { from: 0, to: 1 },
+                        y: '-=6',
+                        duration: 220,
+                        ease: 'Cubic.easeOut',
+                        onComplete: () => {
+                            scene.time.delayedCall(250, () => playEngineIgnition(scene));
+                            launch.active = false; // UI 플로우 종료
+                        }
+                    });
+                }
+            }
+        }
+
+        function playEngineIgnition(scene) { //ver2
+            if (__engineIgnitionPlayed) return;
+            __engineIgnitionPlayed = true;
+
+            // 플레이어 텍스처 자동 시퀀스: 0 -> 1 -> 2
+            player.setTexture('playerShip_0');
+            scene.time.delayedCall(200, () => player.setTexture('playerShip_1'));
+            scene.time.delayedCall(800, () => player.setTexture('playerShip_2'));
+
+            // (선택) 이펙트 토스트
+            const ignite = scene.add.text(config.width / 2, Math.round(config.height * 0.35), 'IGNITION!', {
+                fontSize: '28px',
+                color: '#eaf6ff',
+                fontStyle: 'bold',
+                stroke: '#0b1a2a',
+                strokeThickness: 4
+            }).setOrigin(0.5).setDepth(320).setAlpha(0);
+
+            scene.tweens.add({
+                targets: ignite,
+                alpha: { from: 0, to: 1 },
+                y: '-=10',
+                duration: 250,
+                yoyo: true,
+                repeat: 1,
+                onComplete: () => ignite.destroy()
+            });
+
+            scene.time.delayedCall(900, () => {
+                if (launch.bigTitle) {
+                    scene.tweens.add({
+                        targets: launch.bigTitle,
+                        alpha: 0,
+                        y: '+=8',
+                        duration: 300,
+                        ease: 'Cubic.easeIn',
+                        onComplete: () => {
+                            launch.bigTitle.destroy();
+                            launch.bigTitle = null;
+                            showTakeOff(scene); // ← 다음 단계
+                        }
+                    });
+                } else {
+                    showTakeOff(scene);
+                }
+            });
+        }
+
+        function showTakeOff(scene) {
+            const cx = config.width / 2;
+            const y = Math.round(config.height * 0.56);
+
+            // TAKE OFF! 텍스트
+            const takeoff = scene.add.text(cx, y, 'TAKE OFF!', {
+                fontSize: '40px',
+                fontStyle: 'bold',
+                color: '#eaf6ff',
+                stroke: '#0b1a2a',
+                strokeThickness: 5
+            }).setOrigin(0.5).setDepth(330).setAlpha(0);
+
+            scene.tweens.add({
+                targets: takeoff,
+                alpha: { from: 0, to: 1 },
+                y: '-=10',
+                duration: 280,
+                ease: 'Cubic.easeOut',
+                yoyo: true,
+                repeat: 1,
+                onComplete: () => {
+                    // 잠깐 보여준 뒤 자연스럽게 사라지게 하고 싶다면:
+                    scene.tweens.add({
+                        targets: takeoff,
+                        alpha: 0,
+                        duration: 350,
+                        delay: 200,
+                        onComplete: () => takeoff.destroy()
+                    });
+                }
+            });
+
+            // 항모를 아래로 퇴장
+            if (docking.carrier) {
+                scene.tweens.add({
+                    targets: docking.carrier,
+                    y: config.height + docking.carrier.displayHeight,
+                    duration: 1500,
+                    ease: 'Cubic.easeIn',
+                    onComplete: () => {
+                        docking.carrier.destroy();
+                        docking.carrier = null;
+                    }
+                });
+            }
+
+            // 프리플라이트 딤 배경 페이드아웃
+            if (launch.dim) {
+                scene.tweens.add({
+                    targets: launch.dim,
+                    alpha: 0,
+                    duration: 400,
+                    onComplete: () => {
+                        launch.dim.destroy();
+                        launch.dim = null;
+                    }
+                });
+            }
+
+            // (선택) 이제부터 전투 재개하거나, 플레이어 제어 풀기 등:
+            // sway.locked = false;
+            // setBattle(true);
+        }
+        //-----------------여기까지---------------------
+
+        function preload() {
+            this.load.image('playerShip', 'assets/player/player1.png');
+            this.load.image('playerShip_2', 'assets/player/player1_2.png'); // 점화 강
+            this.load.image('playerShip_1', 'assets/player/player1_1.png'); // 점화 약
+            this.load.image('playerShip_0', 'assets/player/player1_0.png'); // 소등
+
+            this.load.image('carrier', 'assets/player/carrier1.png'); // 경로에 맞게 수정
+        }
+
+        function create() {
+
+            this.bKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B); // 테스트 치트키
+
+
+            // 배경색 설정 (CSS의 background-color와 캔버스 내부의 배경색)
+            this.cameras.main.setBackgroundColor('#000033'); // 진한 파란색 배경
+
+            scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', fill: '#fff' });
+
+            // 점수 텍스트 아래에 골드 HUD
+            scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', fill: '#fff' });
+            goldHUDText = this.add.text(16, 40, `Gold: ${gold}`, { fontSize: '18px', fill: '#cfe9ff' });
+
+            // 플레이어 (사각형) 생성
+            player = this.physics.add.image(config.width / 2, config.height - 50, 'playerShip')
+                .setOrigin(0.5, 0.5)
+                .setScale(0.07);
+            player.setDepth(40);
+
+            player.setCollideWorldBounds(true); // 화면 밖으로 못 나가게
+
+            //----------------수정3--------------------------
+
+            // ✅ 먼저 텍스처 생성 ver2
+            createBulletTextures(this);
+
+            // ✅ bullets 풀 ver2
+            bullets = this.physics.add.group({
+                defaultKey: 'bullet_blue',
+                maxSize: 120
+            });
+
+            bullets.createMultiple({ //ver2
+                key: 'bullet_blue',
+                active: false,
+                visible: false,
+                repeat: 60,
+                setXY: { x: -100, y: -100 }
+            });
+
+            bullets.children.entries.forEach(bullet => { //ver2
+                bullet.body.setSize(10, 20); // 충돌 박스 크기
+            });
+
+            function createBulletTextures(scene) { //ver2
+                if (scene.textures.exists('bullet_blue')) return;
+
+                const make = (key, w, h, color) => {
+                    const g = scene.add.graphics();
+                    g.fillStyle(color, 1);
+                    g.fillRoundedRect(0, 0, w, h, Math.min(w, h) * 0.45);
+                    g.fillStyle(0xffffff, 0.35);
+                    g.fillRoundedRect(w * 0.2, h * 0.15, w * 0.6, h * 0.3, Math.min(w, h) * 0.3);
+                    g.generateTexture(key, w, h);
+                    g.destroy();
+                };
+
+                make('bullet_blue', 8, 18, 0x4cc3ff);
+                make('bullet_blue_bold', 10, 22, 0x66aaff);
+            }
+
+            if (!this.textures.exists('enemy')) { //ver2
+                const g = this.add.graphics();
+                g.fillStyle(0x992222, 1);
+                g.fillCircle(10, 10, 10);
+                g.lineStyle(2, 0xff4444, 1);
+                g.strokeCircle(10, 10, 10);
+                g.generateTexture('enemy', 20, 20);
+                g.destroy();
+            }
+
+            //-----------------여기까지3--------------------
+
+            // 적 그룹 생성
+            enemies = this.physics.add.group();
+
+            // 적 생성 이벤트 (2초마다)
+            enemySpawnEvent = this.time.addEvent({
+                delay: 2000,
+                callback: spawnEnemy,
+                callbackScope: this,
+                loop: true
+            });
+
+            // 점수 텍스트
+            scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', fill: '#fff' });
+
+            // 마우스/터치 입력 설정 // 수정o
+            this.input.on('pointermove', (pointer) => {
+                if (gameOver) return;
+                if (!sway.locked) {
+                    sway.playerBaseX = Phaser.Math.Clamp(pointer.x, 20, config.width - 20);
+                    if (!sway.active) {
+                        // 🔧 흔들림 비활성 상태에서는 바로 따라가게
+                        player.x = sway.playerBaseX;
+                    }
+                }
+            });
+
+            // 충돌 처리: 총알과 적
+            this.physics.add.overlap(bullets, enemies, hitEnemy, null, this);
+            // 충돌 처리: 플레이어와 적 (게임 오버)
+            this.physics.add.overlap(player, enemies, hitPlayer, null, this);
+
+            sway.playerBaseX = config.width / 2; //여기도 수정o
+            player.x = sway.playerBaseX; //
+        }
+
+        function update(time) {
+            if (gameOver) return;
+
+            //--------------------------------수정부---------------------
+
+            if (docking.active) {
+                updateCarrierDocking(this, this.game.loop.delta);
+            }
+
+            // 🔹 B키: battle OFF (적 스폰 + 새 탄 발사 정지)
+            if (Phaser.Input.Keyboard.JustDown(this.bKey)) {
+                startCarrierApproach(this);
+            }
+
+            // ===== 흔들림 적용(플레이어) & 접촉 감지 =====
+            if (sway.active) {
+                if (!sway.locked) {
+                    const dt = this.game.loop.delta / 1000;
+                    sway.playerPhase += dt * (2 * Math.PI * sway.playerHz);
+                    const offset = Math.sin(sway.playerPhase) * sway.playerAmp;
+
+                    const targetX = Phaser.Math.Clamp((sway.playerBaseX ?? player.x) + offset, 20, config.width - 20);
+                    player.x = targetX;
+                }
+
+                if (docking.active && docking.carrier && !sway.locked) {
+                    const playerTopY = player.y - player.displayHeight / 2;
+
+                    // 👇 ‘실제 락 라인’: 항모의 보이는 바닥(y)에서 lockOffsetPx 만큼 위
+                    const lockLineY = docking.carrier.y - docking.lockOffsetPx;
+
+                    if (playerTopY <= lockLineY) {
+                        lockToCenter(this);
+                    }
+                }
+
+            } else {
+                // 🔧 흔들림 비활성 상태: 마우스 기준값으로 바로 위치 반영
+                if (!sway.locked && sway.playerBaseX != null) {
+                    player.x = sway.playerBaseX;
+                }
+            }
+
+            fireFromPlayer(this, time); //ver2
+
+            function updateCarrierDocking(scene, deltaMs) {
+                if (!docking.active || !docking.carrier) return;
+
+                const left = docking.guideLeftX - docking.tolerance;
+                const right = docking.guideRightX + docking.tolerance;
+                const aligned = (player.x >= left && player.x <= right);
+
+                drawGuides(scene, aligned);
+
+                if (aligned) {
+                    // 정렬 상태: 항모가 하강
+                    const dy = (docking.descentPxPerSec * deltaMs) / 1000;
+                    docking.carrier.y = Math.min(docking.carrier.y + dy, docking.targetY);
+                } else {
+                    // 정렬에서 벗어나면 천천히 위로 상승
+                    const uy = (docking.ascentPxPerSec * deltaMs) / 1000;
+                    // 도킹 시작 시점보다 더 위로는 못 올라가게
+                    docking.carrier.y = Math.max(docking.minY, docking.carrier.y - uy);
+                }
+
+                // 착함 완료 판정
+                if (docking.carrier.y >= docking.targetY - 0.5) {
+                    docking.active = false;
+                    if (docking.guide) {
+                        docking.guide.destroy();
+                        docking.guide = null;
+                    }
+
+                    carrierEventOn = false;
+
+                    // ✅ 엔진 소등 연출
+                    playEngineShutdown(scene);
+                }
+            }
+
+            function fireFromPlayer(scene, time) { //ver2
+                if (!battleOn) return;
+                if (time <= lastFired + (weapon.fireRateMs ?? 200)) return;
+
+                const cx = player.x;
+                const cy = player.y - 20;
+
+                // 패턴별 발사 좌표
+                let shots = [];
+                if (weapon.pattern === 1) {
+                    shots.push({ angleDeg: -90, x: cx, y: cy });
+                } else if (weapon.pattern === 2) {
+                    const off = 8;
+                    shots.push({ angleDeg: -90, x: cx - off, y: cy });
+                    shots.push({ angleDeg: -90, x: cx + off, y: cy });
+                } else if (weapon.pattern === 3) {
+                    const s = weapon.spreadDeg ?? 10;
+                    shots.push({ angleDeg: -90 - s, x: cx - 10, y: cy });
+                    shots.push({ angleDeg: -90, x: cx, y: cy });
+                    shots.push({ angleDeg: -90 + s, x: cx + 10, y: cy });
+                }
+
+                for (const s of shots) {
+                    const b = bullets.get(s.x, s.y);
+                    if (!b) continue;
+
+                    b.setActive(true).setVisible(true);
+                    b.body.enable = true;
+
+                    b.setTexture(weapon.bulletKey || 'bullet_blue');
+                    const tex = scene.textures.get(b.texture.key).getSourceImage();
+                    const targetH = 18;
+                    const scale = targetH / tex.height;
+                    b.setScale(scale);
+
+                    // 🔸 X축 판정 배수 적용 (업그레이드 반영)
+                    const bodyW = b.displayWidth * (weapon.hitboxScaleX ?? 1.0);
+                    const bodyH = b.displayHeight;
+                    b.body.setSize(bodyW, bodyH, true);
+
+                    const rad = Phaser.Math.DegToRad(s.angleDeg);
+                    const vx = Math.cos(rad) * (weapon.bulletSpeed ?? 400);
+                    const vy = Math.sin(rad) * (weapon.bulletSpeed ?? 400);
+                    b.setVelocity(vx, vy);
+                    b.setAngle(s.angleDeg + 90);
+                }
+
+                lastFired = time;
+            }
+
+            updateTempShop(this, this.game.loop.delta); //ver2
+
+            updateLaunchUI(this); //ver2
+
+            //-------------------------여기까지-----------------------
+
+            // 화면 밖으로 나간 총알 비활성화
+            bullets.children.each(function (b) {
+                if (b.active && b.y < 0) {
+                    b.setActive(false).setVisible(false);
+                    b.body.enable = false; // 물리 비활성화
+                }
+            });
+
+            // 화면 밖으로 나간 적 비활성화 (아래로 나감)
+            enemies.children.each(function (enemy) {
+                if (enemy.active && enemy.y > config.height + 50) {
+                    enemy.setActive(false).setVisible(false);
+                    enemy.body.enable = false;
+                }
+            });
+        }
+
+        function hitEnemy(bullet, enemy) {
+            // 총알과 적이 부딪히면 둘 다 비활성화
+            bullet.setActive(false).setVisible(false);
+            bullet.body.enable = false;
+
+            enemy.setActive(false).setVisible(false);
+            enemy.body.enable = false;
+
+            score += 10;
+            scoreText.setText('Score: ' + score);
+        }
+
+        function hitPlayer(player, enemy) {
+            if (gameOver) return;
+
+            // 플레이어가 적에게 맞으면 게임 오버
+            this.physics.pause();
+            player.setTint(0xff0000); // 플레이어를 빨갛게
+            gameOver = true;
+
+            this.add.text(config.width / 2, config.height / 2, 'GAME OVER', { fontSize: '48px', fill: '#fff' }).setOrigin(0.5);
+            this.add.text(config.width / 2, config.height / 2 + 60, 'Restart F5', { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
+        }
+
+        // Phaser는 이미지를 로드하지 않으면 객체를 만들 수 없으므로,
+        // 더미 이미지를 생성하는 헬퍼 함수를 추가합니다. (create 함수가 실행되기 전에)
+        Phaser.GameObjects.GameObjectFactory.register('image', function (x, y, key, frame) {
+            if (!this.scene.textures.exists(key)) {
+                // 해당 키의 텍스처가 없으면 빈 텍스처를 만듭니다.
+                let graphics = this.scene.add.graphics({ fillStyle: { color: 0xffffff } });
+                graphics.fillRect(0, 0, 32, 32); // 32x32 흰색 사각형
+                graphics.generateTexture(key, 32, 32);
+                graphics.destroy();
+            }
+            return this.displayList.add(new Phaser.GameObjects.Image(this.scene, x, y, key, frame));
+        });
+
+
+    </script>
+
+</body>
+
+</html>
