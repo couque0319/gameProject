@@ -2415,10 +2415,224 @@ stageButtons.forEach(button => {
     button.href = `game.html?difficulty=hard&stage=${stageNumber}`;
 });
 ```
+-------------------------
+
+## 격납고 구현 
+hangar.html 
+```
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>격납고 - PROJECT: MECH</title>
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/main_layout.css">
+    <link rel="stylesheet" href="assets/css/hangar.css">
+</head>
+<body>
+
+    <div class="main-content">
+
+        <div class="hangar-container">
+            <h2>기체 선택</h2>
+            
+            <div class="airplane-selection">
+                <div class="airplane-box" data-plane-id="airplane1">
+                    <div class="airplane-image airplane1-img"></div> 
+                    <h3>TYPE-A: Striker</h3>
+                    <p>표준형 기체. 밸런스가 잡혀있습니다.</p>
+                </div>
+                
+                <div class="airplane-box" data-plane-id="airplane2">
+                    <img src="assets/images/player/player2.png" alt="기체 2">
+                    <h3>TYPE-B: Interceptor</h3>
+                    <p>고속형 기체. 속도가 빠르지만 방어력이 낮습니다.</p>
+                </div>
+            </div>
+            
+            <a href="main.html" class="back-btn">
+                &laquo; 메인 메뉴로
+            </a>
+        </div>
+    </div>
+    
+    <script src="assets/js/hangar.js"></script>
+</body>
+</html>
+```
+
+hangar.css
+```
+/* assets/css/hangar.css */
+
+/* .stage-list-container 스타일 재사용 */
+.hangar-container {
+    width: 90%;
+    max-width: 800px; /* 두 기체가 보이도록 너비 조절 */
+    padding: 20px 30px;
+    background-color: rgba(0, 0, 0, 0.75); 
+    border-radius: 10px;
+    border: 2px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    gap: 25px; 
+}
+
+.hangar-container h2 {
+    font-size: 2.5rem;
+    color: white;
+    text-align: center;
+    margin: 0 0 10px 0;
+    text-shadow: 2px 2px 4px #000;
+}
+
+/* 기체 선택 영역 */
+.airplane-selection {
+    display: flex;
+    justify-content: space-around; /* 양 옆으로 배치 */
+    gap: 20px;
+}
+
+/* 개별 기체 카드 */
+.airplane-box {
+    background-color: #222;
+    border: 3px solid #888;
+    border-radius: 10px;
+    padding: 20px;
+    width: 45%;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.airplane-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.5rem;
+    color: #eee;
+}
+
+.airplane-box p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+/* --- 애니메이션 적용 부분 --- */
+
+/* 기체 이미지 표시용 div (img 태그 대신 사용) */
+.airplane-box .airplane-image {
+    width: 100%;
+    max-width: 250px; /* 이미지 최대 크기 */
+    height: 250px; /* 이미지 높이 고정 (비율에 맞게 조절 필요) */
+    margin: 0 auto 15px auto; /* 중앙 정렬 */
+    background-size: contain; /* 이미지가 잘리지 않고 div에 맞춰지도록 */
+    background-repeat: no-repeat;
+    background-position: center;
+    border-bottom: 2px solid #555;
+    padding-bottom: 15px;
+}
+
+/* airplane1의 기본 이미지 (엔진 불꽃 없는 이미지로 설정 권장) */
+.airplane-box .airplane1-img {
+    background-image: url('../images/player/player1_frame2.png'); 
+}
+
+/* airplane1 호버 시 애니메이션 */
+.airplane-box[data-plane-id="airplane1"]:hover .airplane1-img {
+    /* 0.6초 동안 4단계를(steps(4)) 무한(infinite) 반복 */
+    animation: engineFlameAnimation 0.6s steps(4) infinite;
+}
+
+/* @keyframes 정의: 엔진 불꽃 애니메이션 */
+@keyframes engineFlameAnimation {
+    0% { background-image: url('../images/player/player1_frame1.png'); }
+    25% { background-image: url('../images/player/player1_frame3.png'); }
+    50% { background-image: url('../images/player/player1_frame4.png'); }
+    75% { background-image: url('../images/player/player1_frame3.png'); }
+    100% { background-image: url('../images/player/player1_frame1.png'); }
+}
 
 
+/* player2에 대한 스타일 (단일 이미지를 사용한다고 가정) */
+.airplane-box[data-plane-id="airplane2"] img {
+    width: 100%;
+    max-width: 250px;
+    height: auto;
+    /* height: 250px; */ /* 만약 player1과 높이를 맞추려면 이쪽을 사용 */
+    margin-bottom: 15px;
+    border-bottom: 2px solid #555;
+    padding-bottom: 15px;
+}
+
+/* --- (여기까지 애니메이션 부분) --- */
 
 
+/* 마우스 올렸을 때 카드 확대 */
+.airplane-box:hover {
+    transform: scale(1.03);
+    border-color: #fff;
+}
 
+/* ▼▼▼ 선택되었을 때의 스타일 (JS로 제어) ▼▼▼ */
+.airplane-box.selected {
+    background-color: #004a9e; /* 파란색 계열 */
+    border-color: #8ec5fc;
+    box-shadow: 0 0 20px rgba(142, 197, 252, 0.7);
+}
+
+/* 뒤로가기 버튼 (stage.css의 .back-btn 스타일과 동일) */
+.back-btn {
+    margin-top: 10px;
+    font-size: 1rem;
+    color: #ddd;
+    text-decoration: none;
+    text-align: center;
+    transition: color 0.2s;
+}
+
+.back-btn:hover {
+    color: white;
+    text-decoration: underline;
+}
+```
+hangar.js
+```
+// assets/js/hangar.js
+
+// 1. HTML 요소 가져오기
+const selectionBoxes = document.querySelectorAll('.airplane-box');
+
+// 2. 현재 저장된 기체 선택 불러오기
+// localStorage는 브라우저를 껐다 켜도 유지되는 간단한 저장소입니다.
+const savedPlaneId = localStorage.getItem('selectedAirplane');
+
+// 3. 페이지 로드 시, 이전에 선택한 기체가 있으면 .selected 표시하기
+if (savedPlaneId) {
+    const savedBox = document.querySelector(`.airplane-box[data-plane-id="${savedPlaneId}"]`);
+    if (savedBox) {
+        savedBox.classList.add('selected');
+    }
+}
+
+// 4. 각 기체 박스에 클릭 이벤트 추가하기
+selectionBoxes.forEach(box => {
+    box.addEventListener('click', () => {
+        
+        // (A) 일단 모든 박스에서 'selected' 클래스 제거
+        selectionBoxes.forEach(b => b.classList.remove('selected'));
+        
+        // (B) 지금 클릭한 박스에만 'selected' 클래스 추가
+        box.classList.add('selected');
+        
+        // (C) 가장 중요: 클릭한 기체의 ID (data-plane-id)를 localStorage에 저장
+        const planeId = box.dataset.planeId;
+        localStorage.setItem('selectedAirplane', planeId);
+        
+        console.log(`기체 선택됨: ${planeId}`);
+    });
+});
+```
 
 
