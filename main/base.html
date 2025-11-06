@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>허접 드래곤 플라이트</title>
+    <style>
+        body { margin: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #222; }
+        canvas { border: 2px solid #fff; background-color: #000; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+</head>
+<body>
+
+<script>
+    const config = {
+        type: Phaser.AUTO,
+        width: 480, // 게임 화면 너비 (예: 모바일 화면)
+        height: 640, // 게임 화면 높이
+        parent: 'game-container', // HTML에 id='game-container'인 div가 없으면 body에 붙습니다.
+        physics: {
+            default: 'arcade',
+            arcade: {
+                debug: false // 충돌 박스를 보려면 true
+            }
+        },
+        scene: {
+            preload: preload,
+            create: create,
+            update: update
+        }
+    };
+
+    const game = new Phaser.Game(config);
+
+    let player;
+    let bullets;
+    let enemies;
+    let lastFired = 0; // 총알 발사 딜레이를 위한 시간
+    let score = 0;
+    let scoreText;
+    let gameOver = false;
+
+    function preload() {
+        // 이미지를 사용하지 않으므로 아무것도 로드할 필요가 없습니다.
+        // 나중에 이미지를 추가하려면 여기에 load.image()를 사용합니다.
+    }
+
+    function create() {
+        // 배경색 설정 (CSS의 background-color와 캔버스 내부의 배경색)
+        this.cameras.main.setBackgroundColor('#000033'); // 진한 파란색 배경
+
+        // 플레이어 (사각형) 생성
+        player = this.physics.add.image(config.width / 2, config.height - 50, 'player')
+            .setOrigin(0.5, 0.5)
+            .setDisplaySize(40, 40) // 크기 설정
+            .setTint(0x00ff00); // 녹색
+
+        player.setCollideWorldBounds(true); // 화면 밖으로 못 나가게
+
+        // 총알 그룹 생성
+        bullets = this.physics.add.group({
+            defaultKey: 'bullet',
+            maxSize: 100 // 최대 100개의 총알
+        });
+        // 총알 모양 (작은 흰색 사각형)
+        bullets.createMultiple({
+            key: 'bullet',
+            active: false,
+            visible: false,
+            repeat: 99, // 100개 만듭니다.
+            setXY: { x: -100, y: -100 }, // 화면 밖으로 초기 위치
+            setOrigin: { x: 0.5, y: 0.5 },
+            setScale: { x: 0.5, y: 0.5 },
+            setTint: 0xffffff, // 흰색
+            enable: true,
+        });
+        bullets.children.entries.forEach(bullet => {
+            bullet.body.setSize(10, 20); // 충돌 박스 크기
+        });
+
+
+        // 적 그룹 생성
+        enemies = this.physics.add.group();
+
+        // 적 생성 이벤트 (2초마다)
+        this.time.addEvent({
+            delay: 2000,
+            callback: spawnEnemy,
+            callbackScope: this,
+            loop: true
+        });
+
+        // 점수 텍스트
+        scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', fill: '#fff' });
+
+        // 마우스/터치 입력 설정
+        this.input.on('pointermove', function (pointer) {
+            if (gameOver) return;
+            // 플레이어를 마우스/터치 X 좌표로 이동
+            player.x = pointer.x;
+        });
+
+        // 충돌 처리: 총알과 적
+        this.physics.add.overlap(bullets, enemies, hitEnemy, null, this);
+        // 충돌 처리: 플레이어와 적 (게임 오버)
+        this.physics.add.overlap(player, enemies, hitPlayer, null, this);
+    }
+
+    function update(time) {
+        if (gameOver) return;
+
+        // 총알 자동 발사 (딜레이 200ms)
+        if (time > lastFired + 200) {
+            let bullet = bullets.get(player.x, player.y - 20); // 플레이어 위에서 생성
+            if (bullet) {
+                bullet.setActive(true).setVisible(true);
+                bullet.body.enable = true; // 물리 활성화
+                bullet.setVelocityY(-400); // 위로 빠르게 이동
+                lastFired = time;
+            }
+        }
+
+        // 화면 밖으로 나간 총알 비활성화
+        bullets.children.each(function(b) {
+            if (b.active && b.y < 0) {
+                b.setActive(false).setVisible(false);
+                b.body.enable = false; // 물리 비활성화
+            }
+        });
+
+        // 화면 밖으로 나간 적 비활성화 (아래로 나감)
+        enemies.children.each(function(enemy) {
+            if (enemy.active && enemy.y > config.height + 50) {
+                enemy.setActive(false).setVisible(false);
+                enemy.body.enable = false;
+            }
+        });
+    }
+
+    function spawnEnemy() {
+        if (gameOver) return;
+
+        let x = Phaser.Math.Between(50, config.width - 50); // 무작위 X 위치
+        let enemy = enemies.create(x, -50, 'enemy')
+            .setOrigin(0.5, 0.5)
+            .setDisplaySize(30, 30) // 적 크기
+            .setTint(0xff0000); // 빨간색
+
+        enemy.setVelocityY(Phaser.Math.Between(50, 150)); // 아래로 이동 속도
+        enemy.body.setSize(30, 30); // 충돌 박스 크기
+
+        enemy.body.collideWorldBounds = false; // 적은 화면 밖으로 나갈 수 있게
+        enemy.body.bounce.set(1); // 튕기지 않게
+    }
+
+    function hitEnemy(bullet, enemy) {
+        // 총알과 적이 부딪히면 둘 다 비활성화
+        bullet.setActive(false).setVisible(false);
+        bullet.body.enable = false;
+
+        enemy.setActive(false).setVisible(false);
+        enemy.body.enable = false;
+
+        score += 10;
+        scoreText.setText('Score: ' + score);
+    }
+
+    function hitPlayer(player, enemy) {
+        if (gameOver) return;
+
+        // 플레이어가 적에게 맞으면 게임 오버
+        this.physics.pause();
+        player.setTint(0xff0000); // 플레이어를 빨갛게
+        gameOver = true;
+
+        this.add.text(config.width / 2, config.height / 2, 'GAME OVER', { fontSize: '48px', fill: '#fff' }).setOrigin(0.5);
+        this.add.text(config.width / 2, config.height / 2 + 60, 'Restart F5', { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
+    }
+
+    // Phaser는 이미지를 로드하지 않으면 객체를 만들 수 없으므로,
+    // 더미 이미지를 생성하는 헬퍼 함수를 추가합니다. (create 함수가 실행되기 전에)
+    Phaser.GameObjects.GameObjectFactory.register('image', function (x, y, key, frame) {
+        if (!this.scene.textures.exists(key)) {
+            // 해당 키의 텍스처가 없으면 빈 텍스처를 만듭니다.
+            let graphics = this.scene.add.graphics({ fillStyle: { color: 0xffffff } });
+            graphics.fillRect(0, 0, 32, 32); // 32x32 흰색 사각형
+            graphics.generateTexture(key, 32, 32);
+            graphics.destroy();
+        }
+        return this.displayList.add(new Phaser.GameObjects.Image(this.scene, x, y, key, frame));
+    });
+</script>
+
+</body>
+</html>
