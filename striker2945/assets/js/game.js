@@ -20,6 +20,29 @@
   };
   let lastShotAt = 0; // 자동 사격 타이머
 
+  // PlayerUpgrade 초기화 및 연동
+  if (window.PlayerUpgrade) {
+    // 저장된 상태 로드
+    window.PlayerUpgrade.loadFromStorage();
+    // 무기 상태 업데이트 훅 설정
+    const initialWeaponState = window.PlayerUpgrade.init({
+      hooks: {
+        onWeaponChanged: (snapshot) => {
+          weaponState = { ...snapshot };
+        }
+      }
+    });
+    // 초기 무기 상태 반영
+    weaponState = { ...initialWeaponState.weapon };
+
+    // 플레이어 HP 티어 저장 (player 객체 정의 후 적용)
+    const shopState = window.PlayerUpgrade.getShop();
+    const initialHpTier = shopState.tier.d || 0;
+
+  } else {
+    console.warn('PlayerUpgrade 모듈을 찾을 수 없습니다.');
+  }
+
   // ====== 유틸 ======
   const clamp = (v,min,max)=> Math.max(min, Math.min(max, v));
   const nowMS = ()=> performance.now();
@@ -56,6 +79,7 @@
   const MIDBOSS_HIT_RADIUS = 26; // 중간보스: 원래 r=20, 판정만 넓힘
   let isGameOver = false;
   let gameOverTime = 0;
+
   // 일시정지/상점 플래그
   let isPaused = false;
   let shopOpenedThisPhase = false;
@@ -75,6 +99,9 @@
     }
   };
 
+  // 체력 업그레이드 테이블 (tier.d 0~3)
+  const HP_TABLE = [3, 4, 5, 6];
+
   // 로컬 스토리지에서 선택된 기체 가져오기 (없으면 기본값 사용)
   const selectedPlaneId = localStorage.getItem('selectedAirplane') || 'airplane1';
   const currentSpec = planeSpecs[selectedPlaneId] || planeSpecs.airplane1;
@@ -86,33 +113,36 @@
     fireCd: 0,
     blink: 0,
     alive: true,
-    hp: currentSpec.hp      // 선택된 기체 체력
+    hp: currentSpec.hp,      // 선택된 기체 체력
+    opacity: 1.0,             // 플레이어 불투명도 (캐리어 진입 모션용)
+    coins: 0                  // 플레이어 코인
   };
+
+  // PlayerUpgrade에서 로드된 HP 티어 적용
+  if (window.PlayerUpgrade && typeof initialHpTier !== 'undefined') {
+    player.hp = HP_TABLE[initialHpTier];
+  }
+
+  // 게임 진행 상태 로드 (코인 등)
+  loadGameProgress();
 
   // ====== 이미지: 로더 없이 즉시 생성(렌더 시 안전 체크) ======
   // 플레이어
   const playerImg = new Image();
   playerImg.src = currentSpec.imgSrc; // 선택된 기체 이미지
 
-  // 플레이어 탄 스킨 로더 (스킨 키 → 경로 매핑)
-  const bulletImages = new Map();
-  function getBulletSrcByKey(key){
-    // 프로젝트에 맞게 경로를 배치하세요. (없으면 bullet1.png 로 폴백)
-    const table = {
-      bulletB1: 'assets/images/bullets/bulletB1.png',
-      bulletR1: 'assets/images/bullets/bulletR1.png',
-      bulletG1: 'assets/images/bullets/bulletG1.png',
-      bulletW1: 'assets/images/bullets/bulletW1.png',
-    };
-    return table[key] || 'assets/images/bullets/bullet1.png';
-  }
-  function getBulletImage(key){
-    if (bulletImages.has(key)) return bulletImages.get(key);
-    const img = new Image();
-    img.src = getBulletSrcByKey(key);
-    bulletImages.set(key, img);
-    return img;
-  }
+  // 캐리어 이미지
+  const carrierImg = new Image();
+  carrierImg.src = 'assets/images/carrier1.png';
+
+  // 플레이어 탄 이미지들
+  const bulletImages = {};
+  const BULLET_SKINS = ['bulletB1', 'bulletR1', 'bulletG1', 'bulletW1'];
+  const defaultBulletImg = new Image();
+  defaultBulletImg.src = 'assets/images/bullets/bullet1.png';
+  BULLET_SKINS.forEach(key => {
+    bulletImages[key] = defaultBulletImg;
+  });
 
   // 적 이미지(en1~en13)
   const enemyImages = [];
@@ -125,6 +155,14 @@
   // 적 탄 이미지(고정 1장)
   const enemyBulletImg = new Image();
   enemyBulletImg.src = 'assets/images/enemy_bullet/enemy_bullet.png';
+
+  // ====== 오디오 효과 ======
+  const hitSound = new Audio('assets/audio/hit.mp3');
+  hitSound.volume = 0.6;  // 볼륨 (0.0~1.0 사이 조절 가능)
+
+  // 게임 오버 사운드
+  const gameOverSound = new Audio('assets/audio/game_over.mp3');
+  gameOverSound.volume = 0.7;
 
   // ====== 오브젝트 풀 ======
   function makePool(factory, size){
@@ -140,37 +178,52 @@
     };
   }
 
-  // ====== 사운드 ======
-  const hitSound = new Audio('assets/audio/hit.mp3');
-  hitSound.volume = 0.8;   // 볼륨 (0.0 ~ 1.0)
-
-  const gameOverSound = new Audio('assets/audio/game_over.mp3');
-  gameOverSound.volume = 0.9;
-
-
-  const pBullets = makePool(()=>({active:false,x:0,y:0,vx:0,vy:-360,img:null,dmg:1}), 512);
+  const pBullets = makePool(()=>({active:false,x:0,y:0,vx:0,vy:-360,img:null}), 512);
   const eBullets = makePool(()=>({active:false,x:0,y:0,vx:0,vy:120,img:null}), 768);
   const enemies  = makePool(()=>({active:false,x:0,y:0,vx:0,vy:70,hp:3,r:14,t:0,fireInt:1000,fireT:0,pattern:'straight',img:null}), 256);
+
+  // [추가] 보스 이미지 로드
+  const bossImages = [];
+  for (let i = 1; i <= 5; i++) { // boss1.png~boss5.png 등 여러 장일 경우
+    const img = new Image();
+    img.src = `assets/images/boss/boss${i}.png`;
+    bossImages.push(img);
+  }
 
   // ====== 보스(단일 슬롯) ======
   let boss = null;
   function spawnBoss(){
-    boss = {active:true,x:W*0.5,y:-60,vx:0,vy:60,
-            r:24,                   // 시각 표시용 반경(원 그리기)
-            hitR: BOSS_HIT_RADIUS,  // 충돌 판정용 반경(더 큼)
-            hp:120,t:0,fireInt:600,fireT:0,patternPhase:0,phaseTimer:0};
+    const bossImg = bossImages.length ? bossImages[Math.floor(Math.random() * bossImages.length)] : null;
+    boss = {
+      active:true, x:W*0.5, y:-60, vx:0, vy:60,
+      r:24, hitR:BOSS_HIT_RADIUS, hp:120,
+      t:0, fireInt:600, fireT:0,
+      img: bossImg // 🔹 이미지 적용
+    };
   }
   function spawnMiniBoss(){
-    boss = {active:true,x:W*0.5,y:-60,vx:0,vy:60,
-            r:20,                      // 시각 표시용
-            hitR: MIDBOSS_HIT_RADIUS,  // 충돌 판정용
-            hp:70,t:0,fireInt:800,fireT:0};
+    const bossImg = bossImages.length ? bossImages[0] : null; // 첫 번째 이미지를 중간보스로 사용
+    boss = {
+      active:true, x:W*0.5, y:-60, vx:0, vy:60,
+      r:20, hitR:MIDBOSS_HIT_RADIUS, hp:70,
+      t:0, fireInt:800, fireT:0,
+      img: bossImg // 🔹 이미지 적용
+    };
   }
 
   // ====== 스테이지 클리어 상태 ======
   let stageCleared = false;
   let stageClearTime = 0;
   let bannerAlpha = 0;
+
+  // ====== 캐리어 이벤트 상태 ======
+  let carrierEventActive = false;
+  let carrierY = -200; // 캐리어 초기 Y 위치 (화면 밖 위쪽)
+  const CARRIER_TARGET_Y = H / 2 - 100; // 캐리어가 멈출 Y 위치
+  const CARRIER_EXIT_Y = -200; // 캐리어가 나갈 Y 위치
+  const CARRIER_SPEED = 80; // 캐리어 이동 속도
+  let playerAttachedToCarrier = false;
+  let carrierAnimationPhase = 0; // 0: 등장, 1: 플레이어 대기, 2: 플레이어 탑승, 3: 퇴장
 
   // 진행도 저장 (클리어 시 다음 스테이지 해제)
   function saveProgressAfterClear(){
@@ -183,6 +236,23 @@
     } catch(_) {}
   }
 
+  // 게임 진행 상태 저장 (코인 등)
+  function saveGameProgress() {
+    try {
+      localStorage.setItem('player_coins', String(player.coins));
+    } catch (_) {}
+  }
+
+  // 게임 진행 상태 로드 (코인 등)
+  function loadGameProgress() {
+    try {
+      const savedCoins = parseInt(localStorage.getItem('player_coins') || '0', 10);
+      if (Number.isFinite(savedCoins)) {
+        player.coins = savedCoins;
+      }
+    } catch (_) {}
+  }
+
   // ====== 스폰 함수 ======
   function tHP(h){ return h|0; }
 
@@ -193,9 +263,9 @@
     return e;
   }
 
-  function spawnPBullet(x,y,vy=-360, dmg=1, img=null){
+  function spawnPBullet(x,y,vy,img){
     const b = pBullets.get(); if(!b) return null;
-    Object.assign(b,{active:true,x,y,vx:0,vy,img: (img||null), dmg});
+    Object.assign(b,{active:true,x,y,vx:0,vy,img: img || defaultBulletImg});
     return b;
   }
 
@@ -220,6 +290,7 @@
   const Game = (window.Game = window.Game || {});
   Game.pause = function(){ isPaused = true; };
   Game.resume = function(){ isPaused = false; };
+  Game.player = player; // player 객체를 Game 전역 객체에 노출
   function openShopOnce(){
     if (shopOpenedThisPhase) return;
     shopOpenedThisPhase = true;
@@ -281,31 +352,106 @@
   // ====== 업데이트 로직 ======
   function update(dt){
     // 일시정지 시 로직 정지(렌더는 계속)
-    if (isPaused || stageCleared) return;
+    // 스테이지 클리어 후 캐리어 이벤트가 진행 중일 때는 일시정지하지 않음
+    if (isPaused && !carrierEventActive) return;
+
+    // 캐리어 이벤트 중일 때
+    if (carrierEventActive) {
+      // 캐리어 이미지 로드 확인
+      if (!carrierImg || !carrierImg.complete || carrierImg.naturalWidth === 0) {
+        // 이미지가 로드되지 않았으면 대기
+        return;
+      }
+
+      const carrierHalfW = carrierImg.naturalWidth / 2;
+      const carrierHalfH = carrierImg.naturalHeight / 2;
+
+      switch (carrierAnimationPhase) {
+        case 0: // 캐리어 등장 (화면 위에서 중앙으로)
+          console.log('Carrier Phase 0: Approaching');
+          carrierY += CARRIER_SPEED * dt / 1000;
+          if (carrierY >= CARRIER_TARGET_Y) {
+            carrierY = CARRIER_TARGET_Y;
+            carrierAnimationPhase = 1; // 플레이어 대기
+            console.log('Carrier Phase 0 -> 1: Player wait');
+          }
+          break;
+        case 1: // 플레이어 대기 (캐리어 중앙으로 이동)
+          console.log('Carrier Phase 1: Player moving to carrier');
+          // 플레이어가 캐리어 중앙으로 이동하는 로직
+          const targetPlayerX = W / 2;
+          const targetPlayerY = carrierY; // 캐리어 중앙으로 이동
+          const dx = targetPlayerX - player.x;
+          const dy = targetPlayerY - player.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const playerMoveSpeed = player.spd * dt / 1000;
+
+          if (dist > playerMoveSpeed) {
+            player.x += (dx / dist) * playerMoveSpeed;
+            player.y += (dy / dist) * playerMoveSpeed;
+          } else {
+            player.x = targetPlayerX;
+            player.y = targetPlayerY;
+            playerAttachedToCarrier = true;
+            carrierAnimationPhase = 2; // 플레이어 탑승 완료, 잠시 대기
+            console.log('Carrier Phase 1 -> 2: Player attached, waiting');
+            setTimeout(() => {
+              carrierAnimationPhase = 3; // 캐리어 퇴장
+              console.log('Carrier Phase 2 -> 3: Carrier exiting');
+            }, 1000); // 1초 대기
+          }
+          break;
+        case 2: // 플레이어 탑승 완료, 대기 중
+          console.log('Carrier Phase 2: Waiting for exit timer');
+          // 플레이어 위치를 캐리어에 고정
+          player.x = W / 2;
+          player.y = carrierY; // 캐리어 중앙에 고정
+          // 플레이어 불투명도 감소 시작
+          player.opacity = Math.max(0, player.opacity - dt / 1000); // 1초 동안 서서히 사라짐
+          break;
+        case 3: // 캐리어 퇴장 (화면 위로 사라짐)
+          console.log('Carrier Phase 3: Exiting');
+          carrierY -= CARRIER_SPEED * dt / 1000;
+          // 플레이어도 캐리어와 함께 이동
+          player.y = carrierY; // 캐리어와 함께 이동
+          // 플레이어 불투명도 계속 감소
+          player.opacity = Math.max(0, player.opacity - dt / 1000);
+          if (carrierY < CARRIER_EXIT_Y) {
+            carrierEventActive = false; // 이벤트 종료
+            console.log('Carrier Event Finished. Redirecting.');
+            goNextOrSelect(); // 다음 스테이지 또는 선택 화면으로 이동
+          }
+          break;
+      }
+      return; // 캐리어 이벤트 중에는 다른 업데이트 로직 건너뛰기
+    }
 
     // 플레이어 이동 처리
-    handlePlayerMovement(dt);
+    if (!carrierEventActive) {
+      handlePlayerMovement(dt);
+    }
 
     // 자동 발사
     if (player.alive) {
-       player.fireCd -= dt;
+      player.fireCd -= dt;
       if (player.fireCd <= 0){
-        const img = getBulletImage(weaponState.bulletKey);
-        const n   = Math.max(1, Math.min(3, weaponState.pattern|0));
-        const spreadRad = (weaponState.spreadDeg||0) * Math.PI/180;
-        const baseVy = -Math.abs(weaponState.bulletSpeed||420);
-        // n발 평행/스프레드 혼합: 가운데를 기준으로 좌우로 퍼지게
-        const mid = Math.floor(n/2);
-        for (let i=0;i<n;i++){
-          const off = (i - mid);
-          const offX = off * 10; // 평행 오프셋(px)
-          // 발사 각도 보정(아주 소폭): 위쪽(-90deg) 기준으로 spread 적용
-          const ang = -Math.PI/2 + off * spreadRad;
-          const vx = Math.cos(ang) * 0 + off * 10; // 수평 살짝 보정
-          const vy = baseVy; // 위로 발사
-          spawnPBullet(player.x + offX, player.y - 20, vy, (weaponState.damage||1), img);
+        const bulletSpeed = weaponState.bulletSpeed;
+        const bulletImgToUse = bulletImages[weaponState.bulletKey] || defaultBulletImg;
+
+        // 패턴에 따른 총알 발사
+        if (weaponState.pattern === 1) {
+          spawnPBullet(player.x, player.y - 20, -bulletSpeed, bulletImgToUse);
+        } else if (weaponState.pattern === 2) {
+          const spreadRad = weaponState.spreadDeg * Math.PI / 180;
+          spawnPBullet(player.x - 8, player.y - 20, -bulletSpeed, bulletImgToUse);
+          spawnPBullet(player.x + 8, player.y - 20, -bulletSpeed, bulletImgToUse);
+        } else if (weaponState.pattern === 3) {
+          const spreadRad = weaponState.spreadDeg * Math.PI / 180;
+          spawnPBullet(player.x, player.y - 20, -bulletSpeed, bulletImgToUse);
+          spawnPBullet(player.x - 12, player.y - 15, -bulletSpeed, bulletImgToUse);
+          spawnPBullet(player.x + 12, player.y - 15, -bulletSpeed, bulletImgToUse);
         }
-        player.fireCd = Math.max(50, weaponState.fireRateMs|0);
+        player.fireCd = weaponState.fireRateMs;
       }
     }
 
@@ -341,20 +487,15 @@
       boss.y += boss.vy*dt/1000;
       if (boss.y > 120) boss.vy = 0; // 진입 후 정지
       boss.fireT -= dt;
-       boss.phaseTimer += dt;
- 
-       // 일정 시간마다 패턴 변경 (약 8초 간격)
-       if (boss.phaseTimer > 8000){
-         boss.phaseTimer = 0;
-         boss.patternPhase = (boss.patternPhase + 1) % 5; // 5개 패턴 순환
-         showTip(`보스 패턴 전환!`);
-       }
- 
-       // 공격 쿨다운
-       if (boss.fireT <= 0){
-         bossFire(boss.patternPhase);
-         boss.fireT = boss.fireInt;
-       }
+      if (boss.fireT<=0){
+        bossFire();
+        boss.fireT = boss.fireInt;
+      }
+      if (boss.hp<=0){
+        boss.active=false;
+        // 보스 격파 시 상점 오픈
+        openShopOnce();
+      }
     }
 
     // 적 탄
@@ -373,6 +514,7 @@
     if (player.blink>0) player.blink = Math.max(0, player.blink - dt);
 
     // StageManager 진행
+    // console.log('[Game] Calling StageManager.update'); // 너무 자주 호출되므로 주석 처리
     StageManager.update(dt, {
       onTip: showTip,
       onSpawnEnemy: ({x,y,vx,vy,hp,fireInt,pattern})=>{
@@ -429,86 +571,22 @@
       spawnEBullet(e.x, e.y+10, 0, vy);
     }
   }
+  function bossFire(){
+    // 간단 라운드 탄막 + 조준 단발 섞기
+    const n = 12; const spd = 160;
+    for (let i=0;i<n;i++){
+      const a = (Math.PI*2) * (i/n);
+      spawnEBullet(boss.x, boss.y, Math.cos(a)*spd, Math.sin(a)*spd);
+    }
+    // 조준
+    const ang = angleToPlayer(boss.x, boss.y);
+    spawnEBullet(boss.x, boss.y, Math.cos(ang)*220, Math.sin(ang)*220);
+  }
 
-  // ============================
-   // 보스 패턴 다양화 함수들
-   // ============================
- 
-   function bossFire(phase = 0){
-     switch (phase){
-       // ① 기본 원형탄 + 조준탄 (기본형)
-       case 0: {
-         const n = 12; const spd = 150;
-         for (let i=0;i<n;i++){
-           const a = (Math.PI*2)*(i/n);
-           spawnEBullet(boss.x, boss.y, Math.cos(a)*spd, Math.sin(a)*spd);
-         }
-         const ang = angleToPlayer(boss.x,boss.y);
-         spawnEBullet(boss.x,boss.y, Math.cos(ang)*220, Math.sin(ang)*220);
-         break;
-       }
- 
-       // ② 회전형 나선 탄막 (spiral)
-       case 1: {
-         const n = 24; const spd = 130;
-         const t = boss.t / 200; // 시간에 따라 회전
-         for (let i=0;i<n;i++){
-           const a = (Math.PI*2)*(i/n) + t;
-           spawnEBullet(boss.x, boss.y, Math.cos(a)*spd, Math.sin(a)*spd);
-         }
-         break;
-       }
- 
-       // ③ 조준 3연사 (aim burst)
-       case 2: {
-         const ang = angleToPlayer(boss.x,boss.y);
-         const spd = 220;
-         for (let i=0;i<3;i++){
-           setTimeout(()=>{
-             spawnEBullet(boss.x, boss.y, Math.cos(ang)*spd, Math.sin(ang)*spd);
-           }, i*150); // 150ms 간격으로 3연사
-         }
-         break;
-       }
- 
-       // ④ 확산 링(Spread Ring)
-       case 3: {
-         const rings = 3;
-         const n = 16; const baseSpd = 100;
-         for (let r=0;r<rings;r++){
-           const spd = baseSpd + r*40;
-           for (let i=0;i<n;i++){
-             const a = (Math.PI*2)*(i/n) + r*(Math.PI/8);
-             spawnEBullet(boss.x, boss.y, Math.cos(a)*spd, Math.sin(a)*spd);
-           }
-         }
-         break;
-       }
- 
-       // ⑤ 파동형 탄막 (wave spread)
-       case 4: {
-         const n = 6;
-         const baseAngle = Math.PI/2; // 아래로
-         for (let i=0;i<n;i++){
-           const offset = Math.sin(boss.t/300 + i)*0.5; // 시간에 따라 흔들림
-           const ang = baseAngle + offset;
-           const spd = 160;
-           spawnEBullet(boss.x + i*15 - 40, boss.y, Math.cos(ang)*spd, Math.sin(ang)*spd);
-         }
-         break;
-       }
- 
-       default:
-         // 안전 기본형
-         const ang = angleToPlayer(boss.x,boss.y);
-         spawnEBullet(boss.x,boss.y, Math.cos(ang)*200, Math.sin(ang)*200);
-     }
-   }
-
-  function hitCircle(ax, ay, ar, bx, by, br) {
-    const dx = ax - bx;
-    const dy = ay - by;
-    return (dx * dx + dy * dy) <= (ar + br) * (ar + br);
+  // ====== 충돌 ======
+  function hitCircle(ax,ay,ar, bx,by,br){
+    const dx=ax-bx, dy=ay-by;
+    return (dx*dx + dy*dy) <= (ar+br)*(ar+br);
   }
 
   function handleCollisions(dt){
@@ -520,8 +598,8 @@
         if(!b.active) continue;
         if (hitCircle(e.x,e.y,e.r, b.x,b.y,6)){
           b.active=false;
-          e.hp -= Math.max(1, b.dmg|0);
-          if (e.hp<=0){ e.active=false; }
+          e.hp -= weaponState.damage;
+          if (e.hp<=0){ e.active=false; player.coins += 1; }
           break;
         }
       }
@@ -535,9 +613,10 @@
         const br = boss.hitR ?? boss.r;
         if (hitCircle(boss.x,boss.y,br, b.x,b.y,6)){
           b.active=false;
-          boss.hp -= Math.max(1, b.dmg|0);
+          boss.hp -= weaponState.damage;
           if (boss.hp<=0){
             boss.active=false;
+            player.coins += 10; // 보스 격파 시 10 코인 획득
             // 보스 격파 시 상점 오픈
             openShopOnce();
           }
@@ -573,37 +652,37 @@
   }
 
   function damagePlayer(){
-    player.hp -= 1;
-    player.blink = 1500; // 1.5s 무적
-
-    // === 피격 사운드 재생 ===
-    try {
-      // 동시에 여러 번 재생 가능하게 새 인스턴스 사용
-      const s = hitSound.cloneNode();
-      s.play().catch(()=>{}); // 브라우저 자동재생 방지 대비
-    } catch(e) {
-      console.warn('피격 사운드 재생 실패:', e);
-    }
-
-    if (player.hp<=0){
-      player.alive=false;
-      // ===== 게임 오버 처리 =====
-      isGameOver = true;
-      gameOverTime = nowMS();
-      try {
-        const s2 = gameOverSound.cloneNode();
-        s2.play().catch(()=>{});
-      } catch(e) {
-        console.warn('게임 오버 사운드 실패:', e);
-      }
- 
-      // 약간의 지연 후 스테이지 선택으로 복귀
-      setTimeout(() => {
-        if (difficulty === 'easy') location.href = 'stage_list_easy.html';
-        else location.href = 'stage_list_hard.html';
-      }, 3000); // 3초 대기
-    }
+  // 🔊 피격 효과음 재생
+  try {
+    hitSound.currentTime = 0;
+    hitSound.play();
+  } catch(e) {
+    console.warn('hit sound 재생 실패:', e);
   }
+
+  player.hp -= 1;
+  player.blink = 1500;
+
+  if (player.hp <= 0 && !isGameOver) {
+    player.alive = false;
+    isGameOver = true;
+    gameOverTime = nowMS();
+
+    // 🔊 게임 오버 효과음
+    try {
+      gameOverSound.currentTime = 0;
+      gameOverSound.play();
+    } catch(e) {
+      console.warn('game over sound 재생 실패:', e);
+    }
+
+    // 약간의 연출 후 화면 전환
+    setTimeout(() => {
+      if (difficulty === 'easy') location.href='stage_list_easy.html';
+      else location.href='stage_list_hard.html';
+    }, 2500);
+  }
+}
 
   // ====== 스테이지 클리어 판정/연출 ======
   function noneActive(pool){
@@ -625,14 +704,22 @@
   }
   function triggerStageClear(){
     stageCleared = true;
-  stageClearTime = nowMS();
-  bannerAlpha = 0;
-  // 잔여 적탄&적 제거
-  eBullets.arr.forEach(b=> b.active=false);
-  enemies.arr.forEach(e=> e.active=false);
-  if (boss) boss.active=false;
-  // ★ 진행도 저장
-  saveProgressAfterClear();
+    stageClearTime = nowMS();
+    bannerAlpha = 0;
+    // 잔여 적탄&적 제거
+    eBullets.arr.forEach(b=> b.active=false);
+    enemies.arr.forEach(e=> e.active=false);
+    if (boss) boss.active=false;
+    // ★ 진행도 저장
+    saveProgressAfterClear();
+    // 게임 진행 상태 저장 (코인 등)
+    saveGameProgress();
+
+    // 캐리어 이벤트 시작
+    carrierEventActive = true;
+    carrierY = -200; // 화면 밖 위에서 시작
+    playerAttachedToCarrier = false;
+    carrierAnimationPhase = 0;
   }
 
   function goNextOrSelect(){
@@ -643,6 +730,13 @@
     // 배경
     ctx.fillStyle = '#071521';
     ctx.fillRect(0,0,W,H);
+
+    // 캐리어 이벤트 중일 때 캐리어 그리기
+    if (carrierEventActive && carrierImg && carrierImg.complete && carrierImg.naturalWidth > 0) {
+      const carrierW = carrierImg.naturalWidth;
+      const carrierH = carrierImg.naturalHeight;
+      ctx.drawImage(carrierImg, W / 2 - carrierW / 2, carrierY - carrierH / 2, carrierW, carrierH);
+    }
 
     // 간단 별 효과
     ctx.fillStyle = '#0d2a3f';
@@ -655,7 +749,10 @@
 
     // 플레이어
     const blinkOn = (player.blink>0) ? ((nowMS()/80|0)%2===0) : false;
-    if (player.alive && !blinkOn){
+    // 캐리어 이벤트 중에는 깜빡임 효과 무시
+    if (player.alive && (!blinkOn || carrierEventActive)){
+      ctx.save();
+      ctx.globalAlpha = player.opacity; // 플레이어 불투명도 적용
       if (playerImg && playerImg.complete && playerImg.naturalWidth>0){
         const w=64, h=64;
         ctx.drawImage(playerImg, player.x-w/2, player.y-h/2, w, h);
@@ -663,20 +760,23 @@
         ctx.fillStyle = '#7dd3fc';
         ctx.beginPath(); ctx.arc(player.x,player.y,player.r,0,Math.PI*2); ctx.fill();
       }
+      ctx.restore();
     }
 
     // 플레이어 탄
-    pBullets.arr.forEach(b=>{
-      if(!b.active) return;
-      const img = b.img;
-      if (img && img.complete && img.naturalWidth>0){
-        const w=12,h=24;
-        ctx.drawImage(img, b.x-w/2, b.y-h/2, w, h);
-      }else{
-        ctx.fillStyle = '#a7f3d0';
-        ctx.fillRect(b.x-2,b.y-6,4,12);
-      }
-    });
+    if (!carrierEventActive) {
+      pBullets.arr.forEach(b=>{
+        if(!b.active) return;
+        const img = b.img;
+        if (img && img.complete && img.naturalWidth>0){
+          const w=12,h=24;
+          ctx.drawImage(img, b.x-w/2, b.y-h/2, w, h);
+        }else{
+          ctx.fillStyle = '#a7f3d0';
+          ctx.fillRect(b.x-2,b.y-6,4,12);
+        }
+      });
+    }
 
     // 적
     enemies.arr.forEach(e=>{
@@ -693,29 +793,39 @@
 
     // 보스
     if (boss && boss.active){
-      ctx.strokeStyle = '#f87171';
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(boss.x,boss.y,boss.r,0,Math.PI*2); ctx.stroke();
+      if (boss.img && boss.img.complete && boss.img.naturalWidth > 0) {
+        const w = boss.img.naturalWidth;
+        const h = boss.img.naturalHeight;
+        ctx.drawImage(boss.img, boss.x - w/2, boss.y - h/2, w, h);
+      } else {
+        // 이미지가 없을 경우 기존 원형 표시
+        ctx.strokeStyle = '#f87171';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(boss.x,boss.y,boss.r,0,Math.PI*2); ctx.stroke();
+      }
+
       // HP 바
-      const w=200, h=8;
+      const wBar=200, hBar=8;
       const ratio = clamp(boss.hp/120,0,1);
-      ctx.fillStyle='#111827'; ctx.fillRect(W/2-w/2, 20, w, h);
-      ctx.fillStyle='#ef4444'; ctx.fillRect(W/2-w/2, 20, w*ratio, h);
-      ctx.strokeStyle='#fecaca'; ctx.strokeRect(W/2-w/2, 20, w, h);
+      ctx.fillStyle='#111827'; ctx.fillRect(W/2-wBar/2, 20, wBar, hBar);
+      ctx.fillStyle='#ef4444'; ctx.fillRect(W/2-wBar/2, 20, wBar*ratio, hBar);
+      ctx.strokeStyle='#fecaca'; ctx.strokeRect(W/2-wBar/2, 20, wBar, hBar);
     }
 
     // 적 탄
-    eBullets.arr.forEach(b=>{
-      if(!b.active) return;
-      const img = b.img;
-      if (img && img.complete && img.naturalWidth>0){
-        const w=14,h=14;
-        ctx.drawImage(img, b.x-w/2, b.y-h/2, w, h);
-      }else{
-        ctx.fillStyle = '#fde68a';
-        ctx.fillRect(b.x-2,b.y-2,4,4);
-      }
-    });
+    if (!carrierEventActive) {
+      eBullets.arr.forEach(b=>{
+        if(!b.active) return;
+        const img = b.img;
+        if (img && img.complete && img.naturalWidth>0){
+          const w=14,h=14;
+          ctx.drawImage(img, b.x-w/2, b.y-h/2, w, h);
+        }else{
+          ctx.fillStyle = '#fde68a';
+          ctx.fillRect(b.x-2,b.y-2,4,4);
+        }
+      });
+    }
 
     // Tip
     if (nowMS() - tipTime < 1200){
@@ -740,27 +850,34 @@
       ctx.fillText('STAGE CLEAR!', W/2, H/2);
       ctx.restore();
 
-      if (elapsed > 1800) goNextOrSelect();
+
     }
 
-    // ===== GAME OVER 표시 =====
+    // GAME OVER 배너
     if (isGameOver) {
       const elapsed = nowMS() - gameOverTime;
       const alpha = Math.min(1, elapsed / 800);
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#ff3b3b';
-      ctx.font = 'bold 48px sans-serif';
+      ctx.fillStyle = '#ffb4b4';
+      ctx.font = 'bold 42px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('GAME OVER', W/2, H/2);
+      ctx.fillText('GAME OVER', W / 2, H / 2);
       ctx.restore();
     }
+
 
     // 플레이어 HP 표시(간단)
     ctx.fillStyle='#e5e7eb';
     ctx.font='bold 14px sans-serif';
     ctx.textAlign='left';
     ctx.fillText(`HP: ${Math.max(0,player.hp)}`, 16, H-16);
+
+    // 코인 표시
+    const coinHud = document.getElementById('coinHud');
+    if (coinHud) {
+      coinHud.textContent = `COINS: ${player.coins}`;
+    }
   }
 
   // ====== 메인 루프 ======
@@ -775,6 +892,21 @@
     }
     draw();
     requestAnimationFrame(frame);
+  }
+
+  // ====== 스테이지 초기화 ======
+  function initStage(){
+    console.log(`[Game] Initializing stage. Difficulty: ${difficulty}, Stage: ${stage}`);
+    const def = (StageDefs && StageDefs.STAGES && StageDefs.STAGES[difficulty] && StageDefs.STAGES[difficulty][stage]) || null;
+    if (!def){
+      console.error(`[Game] Stage definition not found for ${difficulty}-${stage}`);
+      alert(`스테이지 정의를 찾을 수 없습니다: ${difficulty}-${stage}`);
+      location.href = (difficulty==='easy') ? 'stage_list_easy.html' : 'stage_list_hard.html';
+      return;
+    }
+    console.log('[Game] Stage definition loaded:', def);
+    StageManager.init(def);
+    console.log('[Game] StageManager initialized.');
   }
 
   // ====== 이미지 로드 대기 ======
@@ -804,45 +936,4 @@ preloadAllEnemyImages(() => {
   initStage();
   requestAnimationFrame(frame);
 });
-
-  // ====== 스테이지 초기화 ======
-  function initStage(){
-    const def = (StageDefs && StageDefs.STAGES && StageDefs.STAGES[difficulty] && StageDefs.STAGES[difficulty][stage]) || null;
-    if (!def){
-      alert(`스테이지 정의를 찾을 수 없습니다: ${difficulty}-${stage}`);
-      location.href = (difficulty==='easy') ? 'stage_list_easy.html' : 'stage_list_hard.html';
-      return;
-    }
-    StageManager.init(def);
-  }
-
-  // ====== 시작 ======
-  // PlayerUpgrade 상태 로드 & 훅 연결
-  (function setupUpgrades(){
-    try {
-      // 저장 불러오고 hook으로 게임 반영
-      window.PlayerUpgrade?.loadFromStorage?.();
-      const snapshot = window.PlayerUpgrade?.init?.({
-        hooks: {
-          onWeaponChanged: (w)=>{
-            if (!w) return;
-            weaponState = { ...weaponState, ...w };
-            // 연사 타이밍이 더 빨라졌을 때 첫발 보정(지금 바로 한 발을 쏘고 싶다면 아래 주석 해제)
-             // player.fireCd = Math.min(player.fireCd, weaponState.fireRateMs|0);
-           },
-           onFireRateDecreased: (newMs)=>{
-             // 연사간격이 줄어든 경우 쿨다운을 줄여 손해 없도록 보정
-             player.fireCd = Math.min(player.fireCd, newMs|0);
-           }
-         }
-       }) || { weapon: weaponState };
-       // 초기 스냅샷 반영
-       if (snapshot.weapon) weaponState = { ...weaponState, ...snapshot.weapon };
-     } catch(e){
-       console.warn('PlayerUpgrade init failed:', e);
-     }
-   })();
- 
-   initStage();
-   requestAnimationFrame(frame);
 })();
