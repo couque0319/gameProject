@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PROJECT: MECH - Game</title>
+  <link rel="stylesheet" href="assets/css/base.css">
+  <link rel="stylesheet" href="assets/css/game.css">
+  <style>
+    /* Ad-hoc styles from game.js expectations */
+    #pause-layer {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      text-align: center;
+      padding-top: 40vh;
+      font-size: 24px;
+      z-index: 100;
+    }
+    #pause-layer.show {
+      display: block;
+    }
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="480" height="640"></canvas>
+  <div id="hud"></div>
+  <div id="pause-layer">
+    <div>PAUSED</div>
+    <button id="btn-retry">다시 시작</button>
+  </div>
+  <audio id="bgm" src="assets/audio/main_music.mp3" loop></audio>
+
+  <!-- Game Scripts -->
+  <script src="assets/js/monsters.js"></script>
+  <script src="assets/js/stages/stage_defs.js"></script>
+  <script>
+    // Alias StageDefs to what game.js expects (STAGES)
+    window.STAGES = window.StageDefs.STAGES;
+  </script>
+  <script src="assets/js/game.js"></script>
+</body>
+</html>
