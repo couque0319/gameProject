@@ -55,7 +55,7 @@
   이 문제를 해결하기 위해, game.js가 필요로 하는 환경에 맞춰 game.html 파일의 내용을 완전히 새로
   작성하겠습니다. 새로운 game.html 파일은 다음과 같이 구성됩니다.
 
-   * game.js가 요구하는 <canvas>, <audio>, <div> 요소들을 포함합니다.
+   * game.js가 요구하는 ``` <canvas>, <audio>, <div> ``` 요소들을 포함합니다.
    * 게임에 필요한 CSS 스타일을 내장합니다.
    * monsters.js, stage_defs.js, game.js 등 필요한 스크립트들을 올바른 순서로 불러옵니다.
    * stage_defs.js와 game.js 간의 변수 이름 불일치 문제를 해결하는 코드를 추가합니다.
