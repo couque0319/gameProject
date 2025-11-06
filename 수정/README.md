@@ -1,6 +1,5 @@
-# 어디를 바꾸었나? 
-
-1. `game.html`의 스크립트 경로 오류: 앞서 언급했듯이, game.html에서 stage_defs.js와 stage_manager.js를
+# 어디가 바뀌었는가? 
+   1. `game.html`의 스크립트 경로 오류: 앞서 언급했듯이, game.html에서 stage_defs.js와 stage_manager.js를
       불러오는 경로가 assets/js/stage/로 되어 있습니다. 실제 디렉토리 구조는 assets/js/stages/이므로, 이 부분을
       수정해야 합니다.
 
