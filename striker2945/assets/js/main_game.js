@@ -137,6 +137,21 @@
         if (this.hp <= 0) {
           this.destroy();
           showTip('보스 격파!');
+          
+          
+            player.setActive(false).setVisible(false).setVelocity(0);
+
+            window.CarrierEvent.start(scene, {
+               onComplete: () => {
+                window.ShopEvent.start(scene, {
+                   onExit: () => {
+                    location.href = 'select_stage.html';
+                   }
+                });
+               }
+            });
+            return
+          
         }
       };
       return b;

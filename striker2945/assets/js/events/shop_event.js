@@ -1,164 +1,177 @@
-// assets/js/events/shop_event.js
-(function (global) {
-  const NS = (global.ShopEvent = global.ShopEvent || {});
+// assets/js/shop_event.js
+// 보스/중간보스 격파 후 등장하는 상점 이벤트 처리
+// PlayerUpgrade.js와 연동됨 (없어도 열리지만 구매효과는 비활성)
 
-  // 전역 업그레이드 상태(없으면 생성)
-  const U = (global.GameUpgrades = global.GameUpgrades || {
-    coins: 0,
-    // 기존 값과의 호환
-    power: 1,       // 데미지 배수(탄 1발이 빼는 HP)
-    fireRate: 1.0,  // 발사간격 배수(높을수록 빨라짐)
-    speed: 1.0,     // 이동속도 배수
-    // base.html 항목용 확장
-    gunShots: 1,            // 기관포 발수(1→2→3)
-    missileUnlocked: false, // 미사일 해금
-    missileShots: 0,        // 미사일 발수(0→2)
-    maxHP: 3                // 체력 강화(표시만, 실제 체력 시스템 연결 시 사용)
-  });
+(function () {
+  'use strict';
 
-  // 버튼/UI 생성
-  function makeUI() {
-    const el = document.createElement('div');
-    Object.assign(el.style, {
-      position:'fixed', inset:'0', background:'rgba(10,14,22,.86)', zIndex: 10001,
-      display:'grid', placeItems:'center'
-    });
+  // 내부 상태(중복 바인딩 방지용)
+  let shopOverlay, shopButtons, shopCloseBtn, shopTitle, shopInfo;
+  let initialized = false;
 
-    el.innerHTML = `
-      <div style="min-width:560px;background:#0f1c2a;border:1px solid #2f4c69;border-radius:14px;padding:16px 18px;color:#e7f5ff;font:14px ui-monospace,Consolas,monospace;box-shadow:0 8px 30px rgba(0,0,0,.35)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">
-          <div style="font-weight:800;">함재 상점</div>
-          <div>보유 코인: <b id="coins">${U.coins}</b></div>
-          <button id="btn-exit" style="background:#1c2f44;color:#bfe7ff;border:1px solid #335a86;border-radius:10px;padding:6px 10px;cursor:pointer;">출항</button>
-        </div>
-
-        <div class="grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-          <!-- 1행 -->
-          ${slotBtn('1','기관포 2발',1)}
-          ${slotBtn('2','기관포 3발',1)}
-          ${slotBtn('3','미사일 해금',1)}
-          ${slotBtn('4','미사일 2발',1)}
-          <!-- 2행 -->
-          ${slotBtn('5','연사력 강화',1)}
-          ${slotBtn('6','데미지 강화',1)}
-          ${slotBtn('7','체력 강화',1)}
-          ${slotBtn('8','empty',1,true)}
-        </div>
-
-        <div style="opacity:.75;margin-top:12px;display:flex;gap:12px;flex-wrap:wrap">
-          <span>기관포: <b id="st-gun">${U.gunShots}</b>발</span>
-          <span>미사일: <b id="st-miss">${U.missileUnlocked ? (U.missileShots||0) : '잠김'}</b></span>
-          <span>연사: <b id="st-fr">${(U.fireRate*100)|0}%</b></span>
-          <span>데미지: <b id="st-pw">${U.power}x</b></span>
-          <span>이속: <b id="st-sp">${(U.speed*100)|0}%</b></span>
-          <span>체력: <b id="st-hp">${U.maxHP}</b></span>
-        </div>
-      </div>`;
-    return el;
-  }
-
-  function slotBtn(key, title, price, disabled) {
-    const dis = disabled ? 'disabled' : '';
-    return `<button class="slot" data-k="${key}" data-price="${price}" ${dis}
-      style="padding:10px;border-radius:10px;border:1px solid #395a7c;background:#142437;color:#e7f5ff;cursor:${dis?'not-allowed':'pointer'};text-align:left">
-      <div style="font-weight:700">${title}</div>
-      <div style="opacity:.75;font-size:12px">가격 ${price}C</div>
-    </button>`;
-  }
-
-  // 구매 로직
-  function refreshStats(ui){
-    ui.querySelector('#coins').textContent = U.coins;
-    ui.querySelector('#st-gun').textContent = U.gunShots;
-    ui.querySelector('#st-miss').textContent = U.missileUnlocked ? (U.missileShots||0) : '잠김';
-    ui.querySelector('#st-fr').textContent = (U.fireRate*100)|0 + '%';
-    ui.querySelector('#st-pw').textContent = U.power + 'x';
-    ui.querySelector('#st-sp').textContent = (U.speed*100)|0 + '%';
-    ui.querySelector('#st-hp').textContent = U.maxHP;
-  }
-
-  function canBuy(key){
-    // 선행조건
-    if (key==='2' && U.gunShots < 2) return false;         // 2는 1(기관포 2발) 선행
-    if (key==='4' && !U.missileUnlocked) return false;      // 4는 3(미사일 해금) 선행
-    if (key==='8') return false;                            // empty
-    return true;
-  }
-
-  function applyBuy(key){
-    switch(key){
-      case '1': // 기관포 2발
-        if (U.gunShots < 2) U.gunShots = 2;
-        break;
-      case '2': // 기관포 3발
-        if (U.gunShots >= 2) U.gunShots = 3;
-        break;
-      case '3': // 미사일 해금
-        U.missileUnlocked = true;
-        U.missileShots = Math.max(U.missileShots, 0);
-        break;
-      case '4': // 미사일 2발
-        if (U.missileUnlocked) U.missileShots = 2;
-        break;
-      case '5': // 연사력 +10%
-        U.fireRate = Math.min(2.5, U.fireRate * 1.10);
-        break;
-      case '6': // 데미지 +1
-        U.power += 1;
-        break;
-      case '7': // 체력 +1 (표시용)
-        U.maxHP += 1;
-        break;
-      default:
-        return false;
-    }
-    return true;
-  }
-
-  NS.start = function start(scene, { onExit } = {}) {
-    const ui = makeUI();
-    document.body.appendChild(ui);
-
-    const playClick = ()=> scene.sound?.play?.('hit', { volume: .25 });
-
-    function tryBuy(key, price){
-      if (!canBuy(key)) { shake(ui); return; }
-      if (U.coins < price) { shake(ui); return; }
-      U.coins -= price;
-      if (applyBuy(key)) {
-        flash(ui);
-        refreshStats(ui);
-        playClick();
-      }
+  function ensureOverlayExists() {
+    shopOverlay = document.getElementById('shop-overlay');
+    if (shopOverlay) {
+      // 이미 존재
+      shopTitle = document.getElementById('shop-title');
+      shopInfo = document.getElementById('shop-info');
+      shopCloseBtn = document.getElementById('shop-close-btn');
+      shopButtons = document.querySelectorAll('.shop-item');
+      return;
     }
 
-    ui.querySelectorAll('.slot').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const key = btn.dataset.k;
-        const price = Number(btn.dataset.price||1);
-        tryBuy(key, price);
+    // 없으면 즉석 생성
+    shopOverlay = document.createElement('div');
+    shopOverlay.id = 'shop-overlay';
+    shopOverlay.className = 'shop-overlay';
+    shopOverlay.style.cssText = `
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.55); z-index: 9999;
+    `;
+
+    shopOverlay.innerHTML = `
+      <div class="shop-box" style="
+        background:#111; color:#fff; padding:16px 18px; border-radius:12px;
+        width: min(420px, 92%); box-shadow:0 8px 24px rgba(0,0,0,0.5);
+        font-family: ui-sans-serif,system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,Arial;
+      ">
+        <h2 id="shop-title" style="margin:6px 0 10px 0; font-size:18px;">보급 상점</h2>
+
+        <div id="shop-info" style="font-size:12px; opacity:.9; margin-bottom:10px;"></div>
+
+        <div class="shop-items" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="shop-item" data-item="1">기관포 2줄</button>
+          <button class="shop-item" data-item="2">기관포 3줄</button>
+          <button class="shop-item" data-item="3">미사일 해금</button>
+          <button class="shop-item" data-item="4">미사일 2발</button>
+          <button class="shop-item" data-item="5">연사력 강화</button>
+          <button class="shop-item" data-item="6">데미지 강화</button>
+          <button class="shop-item" data-item="7">체력 강화</button>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+          <button id="shop-close-btn" style="padding:6px 10px;">닫기</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(shopOverlay);
+
+    // refs 갱신
+    shopTitle = document.getElementById('shop-title');
+    shopInfo = document.getElementById('shop-info');
+    shopCloseBtn = document.getElementById('shop-close-btn');
+    shopButtons = document.querySelectorAll('.shop-item');
+  }
+
+  function initShopElements() {
+    ensureOverlayExists();
+
+    // 중복 바인딩 방지: 기존 리스너 제거
+    if (shopButtons && shopButtons.forEach) {
+      shopButtons.forEach((btn) => {
+        btn.removeEventListener('click', onBuyButtonClick);
       });
-    });
+    }
+    if (shopCloseBtn) {
+      shopCloseBtn.removeEventListener('click', closeShop);
+    }
 
-    ui.querySelector('#btn-exit').addEventListener('click', ()=>{
-      ui.remove();
-      onExit && onExit({ upgrades: { ...U } });
-    });
+    // 새로 바인딩
+    if (shopButtons && shopButtons.forEach) {
+      shopButtons.forEach((btn) => btn.addEventListener('click', onBuyButtonClick));
+    }
+    if (shopCloseBtn) {
+      shopCloseBtn.addEventListener('click', closeShop);
+    }
 
-    refreshStats(ui);
+    initialized = true;
+  }
+
+  /** 상점 열기(보스 격파 시 호출) */
+  function openShop() {
+    if (!initialized) initShopElements();
+
+    // 방어: 요소가 정말 있는지 재확인
+    if (!shopOverlay) {
+      console.error('[ShopEvent] shop overlay not found and could not be created.');
+      return;
+    }
+
+    shopOverlay.style.display = 'flex';
+    if (shopTitle) shopTitle.textContent = '보급 상점 - 아이템을 구매하여 강화하세요!';
+    updateShopStatusUI();
+  }
+
+  /** 상점 닫기 */
+  function closeShop() {
+    if (shopOverlay) shopOverlay.style.display = 'none';
+
+    // 게임 재개
+    if (typeof window.Game?.resume === 'function') {
+      window.Game.resume();
+    }
+  }
+
+  /** 구매 처리 */
+  function onBuyButtonClick(e) {
+    const key = e.currentTarget?.dataset?.item; // '1'~'7'
+    if (!key) return;
+
+    if (typeof window.PlayerUpgrade !== 'undefined' && typeof window.PlayerUpgrade.buy === 'function') {
+      const snapshot = window.PlayerUpgrade.buy(key);
+      if (typeof window.PlayerUpgrade.saveToStorage === 'function') {
+        window.PlayerUpgrade.saveToStorage();
+      }
+      // 버튼 UI 업데이트
+      e.currentTarget.disabled = true;
+      e.currentTarget.classList.add('bought');
+      showToast(`${key}번 아이템 구매 완료!`);
+      updateShopStatusUI(snapshot);
+    } else {
+      // PlayerUpgrade가 없을 때도 죽지 않도록
+      showToast('아이템 구매가 적용되지 않았습니다(PlayerUpgrade 미탑재).');
+    }
+  }
+
+  /** 구매 결과/현재 상태 표시 */
+  function updateShopStatusUI(snapshot) {
+    const w = snapshot?.weapon || window.PlayerUpgrade?.getWeapon?.();
+    if (!shopInfo) return;
+    if (!w) {
+      shopInfo.textContent = '';
+      return;
+    }
+    shopInfo.innerHTML = `
+      <div>연사속도: ${w.fireRateMs}ms</div>
+      <div>데미지: ${w.damage}</div>
+      <div>탄 패턴: ${w.pattern}발</div>
+      <div>탄 이미지: ${w.bulletKey}</div>
+    `;
+  }
+
+  /** 간단 토스트 */
+  function showToast(msg) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-msg';
+    toast.textContent = msg;
+    toast.style.cssText = `
+      position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
+      background: rgba(0,0,0,0.8); color:#fff; padding:8px 12px; border-radius:8px;
+      z-index:10000; opacity:0; transition: opacity .2s ease;
+      font-size: 13px;
+    `;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => (toast.style.opacity = '1'));
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 250);
+    }, 1400);
+  }
+
+  // 전역 노출
+  window.ShopEvent = {
+    open: openShop,
+    close: closeShop,
   };
-
-  // 작은 연출
-  function flash(ui){
-    ui.style.transition='filter .15s';
-    ui.style.filter='brightness(1.25)';
-    setTimeout(()=> ui.style.filter='', 160);
-  }
-  function shake(ui){
-    const el = ui.querySelector('.grid');
-    el.style.transition='transform .08s';
-    el.style.transform='translateX(4px)';
-    setTimeout(()=> el.style.transform='', 90);
-  }
-
-})(window);
+})();

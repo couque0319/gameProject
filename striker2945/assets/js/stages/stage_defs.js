@@ -1,304 +1,209 @@
 // assets/js/stages/stage_defs.js
-// Canvas 전용 스테이지 정의(최종본) — StageManager.init(stageDef) / StageManager.update(dt, cbs)와 호환
-// 웨이브 파라미터 요약:
-//  - t: 웨이브 시작 시간(ms) — 보통 START + GAP * offset
-//  - count: 스폰 수
-//  - pattern: 'straight' | 'aim' | 'spread3' | 'spread5'
-//  - form: 'line' | 'random' | 'edges'
-//  - enemy: { hp, speedY, fireInt }    // 체력/하강속도(px/s)/발사간격(ms)
-//  - repeat: (선택) 같은 웨이브를 추가로 반복 소환(총 횟수)
-//  - every:  (선택) repeat 간격(ms)
-//  - vx, vy: (선택) 폼 기본 이동값 덮어쓰기
-//  - scatter: (선택) form:'random' 꼬리 간격(px)
-//  - midBoss: [{ at, key }, ...], boss: { at, key }
+// StageManager.init(stageDef) / StageManager.update(dt, cbs)와 호환되는 자동 생성 버전
+// - EASY: 웨이브 7개, HARD: 웨이브 10개
+// - pattern/form은 가중 랜덤(★ spread 계열 자주 등장)
+// - 기존 상수/도우미는 유지 (START/GAP 등)
+// - midBoss/boss 타이밍은 예시 규칙
 
 (function (global) {
   const NS = (global.StageDefs = global.StageDefs || {});
   const STAGES = (NS.STAGES = NS.STAGES || {});
 
   // ===== 공통 타임라인 상수 =====
-  const START = 1200;  // 첫 웨이브까지 대기(ms) - EASY
-  const GAP   = 3000;  // 웨이브 간격(ms)       - EASY
+  const START = 1200;  // EASY 첫 웨이브까지 대기(ms)
+  const GAP   = 6000;  // EASY 웨이브 간격(ms)
 
-  const START_H = 1000; // 첫 웨이브까지 대기(ms) - HARD(빠르게 시작)
-  const GAP_H   = 3600; // 웨이브 간격(ms)       - HARD(조밀)
+  const START_H = 1000; // HARD 첫 웨이브까지 대기(ms)
+  const GAP_H   = 4000; // HARD 웨이브 간격(ms)
 
-  // ===== 자주 쓰는 기본 파라미터 =====
-  const ENEMY_BASE   = { hp: 3, speedY: 70,  fireInt: 1000 }; // EASY
-  const ENEMY_BASE_H = { hp: 4, speedY: 84,  fireInt: 850  }; // HARD(권장 시작점)
+  // ===== 기본 파라미터 =====
+  const ENEMY_BASE   = { hp: 3, speedY: 70,  fireInt: 1000 }; // EASY 기본
+  const ENEMY_BASE_H = { hp: 4, speedY: 84,  fireInt: 850  }; // HARD 시작점
 
-  // 도우미(보스 타이밍 계산)
+  // ===== 도우미(보스/중간보스 타이밍) =====
   const bossAt = (start, gap, lastOffset, delay=3500) => (start + gap * lastOffset) + delay;
   const midAt  = (start, gap, thirdOffset, delay=3000) => (start + gap * thirdOffset) + delay;
 
+  // ===== 유틸 =====
+  const rand = (min, max) => Math.random() * (max - min) + min;
+  const rint = (min, max) => Math.floor(rand(min, max + 1));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // 가중치 기반 선택
+  function weightedPick(entries /* [ [value, weight], ... ] */) {
+    let sum = 0;
+    for (const [, w] of entries) sum += w;
+    let t = Math.random() * sum;
+    for (const [val, w] of entries) {
+      if ((t -= w) <= 0) return val;
+    }
+    return entries[entries.length - 1][0];
+  }
+
+  // ===== 가중 테이블 =====
+  // ★ spread 계열 우세
+  const PATTERN_WEIGHTS_EASY = [
+    ['straight', 1.0],
+    ['aim',      1.2],
+    ['spread3',  1.6],
+    ['spread5',  1.6],
+  ];
+  const PATTERN_WEIGHTS_HARD = [
+    ['straight', 0.9],
+    ['aim',      1.3],
+    ['spread3',  1.9],
+    ['spread5',  1.9],
+  ];
+
+  // form은 random이 약간 더 자주, hard에서는 edges도 조금 상향
+  const FORM_WEIGHTS_EASY = [
+    ['line',   1.0],
+    ['random', 1.3],
+    ['edges',  0.9],
+  ];
+  const FORM_WEIGHTS_HARD = [
+    ['line',   1.0],
+    ['random', 1.4],
+    ['edges',  1.1],
+  ];
+
+  // ===== 웨이브 생성기 (EASY) =====
+  function genEasyWaves(n, start, gap, baseEnemy) {
+    // 웨이브 수량 커브(뒤로 갈수록 증가)
+    const countCurve = [1, 1, 2, 2, 3, 3, 4];
+    const waves = [];
+
+    for (let i = 0; i < n; i++) {
+      const pattern = weightedPick(PATTERN_WEIGHTS_EASY);
+      const form    = weightedPick(FORM_WEIGHTS_EASY);
+
+      const w = {
+        t: start + gap * i,
+        count: countCurve[Math.min(i, countCurve.length - 1)],
+        pattern,
+        form,
+        enemy: { ...baseEnemy }
+      };
+
+      // random 폼은 꼬리 간격 자주 부여
+      if (form === 'random') {
+        w.scatter = rint(8, 13); // 8~13px
+      }
+
+      // edges 폼은 가끔 좌우 이동을 부여
+      if (form === 'edges' && Math.random() < 0.5) {
+        w.vx = (Math.random() < 0.5 ? -1 : 1) * rint(20, 60);
+      }
+
+      // repeat/every: EASY는 낮은 확률, 짧은 반복
+      if (Math.random() < 0.40) {
+        w.repeat = 1 + (Math.random() < 0.5 ? 1 : 2); // 2~3회
+        w.every  = rint(700, 1100);                   // 700~1100ms
+      }
+
+      // 패턴별 소폭 조정(선택): spread는 발사 빈도 약간 빠르게(= fireInt 감소)
+      if (pattern === 'spread3' || pattern === 'spread5') {
+        w.enemy.fireInt = clamp((baseEnemy.fireInt|0) - rint(80, 140), 600, 1200);
+      }
+
+      waves.push(w);
+    }
+    return waves;
+  }
+
+  // ===== 웨이브 생성기 (HARD) =====
+  function genHardWaves(n, start, gap, baseEnemy) {
+    // 초반 3~6, 후반 8~12로 증가하는 기본 값
+    const baseCounts = [3,4,5,6,7,8,9,10,11,12];
+    const waves = [];
+
+    for (let i = 0; i < n; i++) {
+      const pattern = weightedPick(PATTERN_WEIGHTS_HARD);
+      const form    = weightedPick(FORM_WEIGHTS_HARD);
+
+      const w = {
+        t: start + gap * i,
+        count: baseCounts[i] || baseCounts[baseCounts.length - 1],
+        pattern,
+        form,
+        enemy: { ...baseEnemy }
+      };
+
+      // random 폼: 꼬리 간격 더 큼
+      if (form === 'random') {
+        w.scatter = rint(10, 15);
+      }
+
+      // edges 폼: 좌우 스윕을 더 자주/강하게
+      if (form === 'edges' && Math.random() < 0.7) {
+        w.vx = (Math.random() < 0.5 ? -1 : 1) * rint(30, 80);
+      }
+
+      // repeat/every: HARD는 높은 확률, 반복 횟수/빈도 상향
+      if (Math.random() < 0.65) {
+        w.repeat = 2 + (Math.random() < 0.5 ? 1 : 2); // 3~4회
+        w.every  = rint(580, 850);                    // 580~850ms
+      }
+
+      // 패턴별 소폭 조정: spread는 더 자주 쏘게
+      if (pattern === 'spread3' || pattern === 'spread5') {
+        w.enemy.fireInt = clamp((baseEnemy.fireInt|0) - rint(120, 200), 520, 1100);
+      } else if (pattern === 'aim') {
+        // 하드에서 aim은 탄압박을 위해 fireInt 소폭 감소
+        w.enemy.fireInt = clamp((baseEnemy.fireInt|0) - rint(60, 120), 620, 1100);
+      }
+
+      waves.push(w);
+    }
+    return waves;
+  }
+
   // =========================================
-  // EASY (완성본) — 중간보스: 03/06/08, 보스: 09/10
+  // EASY — 1~10 스테이지 자동 생성 (각 7웨이브)
+  // midBoss: 03/06/08, boss: 09/10 (예시)
   // =========================================
   STAGES.easy = STAGES.easy || {};
+  for (let i = 1; i <= 10; i++) {
+    const id = String(i).padStart(2, '0');
+    const waves = genEasyWaves(7, START, GAP, ENEMY_BASE);
 
-  STAGES.easy['01'] = {
-    id: '01', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 3,  pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 3,  pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 8 },
-      { t: START + GAP*2, count: 3,  pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*3, count: 3, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 5, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-    ],
-    midBoss: [{ at: midAt(START, GAP, 2), key: 'midboss1' }],
-    boss: null
-  };
+    const mids = [];
+    if ([3, 6, 8].includes(i)) {
+      mids.push({ at: midAt(START, GAP, 2), key: 'midboss1' });
+    }
+    const boss = ([9, 10].includes(i)) ? { at: bossAt(START, GAP, 6), key: 'boss1' } : null;
 
-  STAGES.easy['02'] = {
-    id: '02', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 5,  pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 5,  pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 8 },
-      { t: START + GAP*2, count: 3, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 2, every: 800 },
-      { t: START + GAP*3, count: 7, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 7, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-    ],
-    midBoss: [],
-    boss: null
-  };
-
-  STAGES.easy['03'] = {
-    id: '03', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 9,  pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 9,  pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 8 },
-      { t: START + GAP*2, count: 12, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 2, every: 1000 },
-      { t: START + GAP*3, count: 12, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 12, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-    ],
-    midBoss: [{ at: midAt(START, GAP, 2), key: 'midboss1' }],
-    boss: null
-  };
-
-  STAGES.easy['04'] = {
-    id: '04', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 10, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 10, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 8 },
-      { t: START + GAP*2, count: 12, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 3, every: 900 },
-      { t: START + GAP*3, count: 14, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 14, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-    ],
-    midBoss: [],
-    boss: null
-  };
-
-  STAGES.easy['05'] = {
-    id: '05', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 10, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 10, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 8 },
-      { t: START + GAP*2, count: 14, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 2, every: 900 },
-      { t: START + GAP*3, count: 14, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 16, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-    ],
-    midBoss: [],
-    boss: null
-  };
-
-  STAGES.easy['06'] = {
-    id: '06', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 12, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 12, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 9 },
-      { t: START + GAP*2, count: 16, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 2, every: 800 },
-      { t: START + GAP*3, count: 16, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 16, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-    ],
-    midBoss: [{ at: midAt(START, GAP, 2), key: 'midboss1' }],
-    boss: null
-  };
-
-  STAGES.easy['07'] = {
-    id: '07', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 12, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 12, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 9 },
-      { t: START + GAP*2, count: 18, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 2, every: 800 },
-      { t: START + GAP*3, count: 18, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 18, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 12 },
-    ],
-    midBoss: [],
-    boss: null
-  };
-
-  STAGES.easy['08'] = {
-    id: '08', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 14, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 14, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-      { t: START + GAP*2, count: 18, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 3, every: 800 },
-      { t: START + GAP*3, count: 20, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 20, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 12 },
-    ],
-    midBoss: [{ at: midAt(START, GAP, 2), key: 'midboss1' }],
-    boss: null
-  };
-
-  STAGES.easy['09'] = {
-    id: '09', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 16, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 16, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-      { t: START + GAP*2, count: 20, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 3, every: 800 },
-      { t: START + GAP*3, count: 22, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 22, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 12 },
-    ],
-    midBoss: [],
-    boss: { at: bossAt(START, GAP, 4), key: 'boss1' }
-  };
-
-  STAGES.easy['10'] = {
-    id: '10', difficulty: 'easy',
-    waves: [
-      { t: START + GAP*0, count: 18, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*1, count: 18, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE }, scatter: 10 },
-      { t: START + GAP*2, count: 22, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE }, repeat: 3, every: 700 },
-      { t: START + GAP*3, count: 24, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE } },
-      { t: START + GAP*4, count: 24, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE }, scatter: 12 },
-    ],
-    midBoss: [],
-    boss: { at: bossAt(START, GAP, 4), key: 'boss1' }
-  };
+    STAGES.easy[id] = {
+      id,
+      difficulty: 'easy',
+      waves,
+      midBoss: mids,
+      boss
+    };
+  }
 
   // =========================================
-  // HARD (편집 템플릿) — 더 높은 밀도/속도/빈도
+  // HARD — 1~10 스테이지 자동 생성 (각 10웨이브)
+  // midBoss: 03/06/07, boss: 08/09/10 (예시)
   // =========================================
   STAGES.hard = STAGES.hard || {};
+  for (let i = 1; i <= 10; i++) {
+    const id = String(i).padStart(2, '0');
+    const waves = genHardWaves(10, START_H, GAP_H, ENEMY_BASE_H);
 
-  STAGES.hard['01'] = {
-    id: '01', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 9,  pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*1, count: 9,  pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H }, scatter: 8 },
-      { t: START_H + GAP_H*2, count: 12, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 2, every: 900 },
-      { t: START_H + GAP_H*3, count: 12, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 12, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H }, scatter: 10 },
-    ],
-    midBoss: [],
-    boss: null
-  };
+    const mids = [];
+    if ([3, 6, 7].includes(i)) {
+      mids.push({ at: midAt(START_H, GAP_H, 2), key: 'midboss1' });
+    }
+    // 보스는 후반 3스테이지 고정 등장(예시)
+    const boss = ([8, 9, 10].includes(i)) ? { at: bossAt(START_H, GAP_H, 9), key: 'boss1' } : null;
 
-  STAGES.hard['02'] = {
-    id: '02', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 10, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*1, count: 10, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H }, scatter: 9 },
-      { t: START_H + GAP_H*2, count: 14, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H, fireInt: 820 }, repeat: 2, every: 800 },
-      { t: START_H + GAP_H*3, count: 14, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 14, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H }, scatter: 12 },
-    ],
-    // 필요하면 활성화
-    midBoss: [{ at: midAt(START_H, GAP_H, 2), key: 'midboss1' }],
-    boss: null
-  };
-
-  STAGES.hard['03'] = {
-    id: '03', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 12, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 5 } },
-      { t: START_H + GAP_H*1, count: 12, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 820 }, scatter: 10 },
-      { t: START_H + GAP_H*2, count: 16, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 3, every: 800 },
-      { t: START_H + GAP_H*3, count: 16, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 16, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 800 }, scatter: 12 },
-    ],
-    midBoss: [],
-    boss: null
-  };
-
-  STAGES.hard['04'] = {
-    id: '04', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 12, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 5 } },
-      { t: START_H + GAP_H*1, count: 12, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H }, scatter: 10 },
-      { t: START_H + GAP_H*2, count: 18, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H, fireInt: 800 }, repeat: 3, every: 750 },
-      { t: START_H + GAP_H*3, count: 18, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 18, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H }, scatter: 12 },
-    ],
-    midBoss: [],
-    boss: null
-  };
-
-  STAGES.hard['05'] = {
-    id: '05', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 14, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 5, speedY: 88 } },
-      { t: START_H + GAP_H*1, count: 14, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 780 }, scatter: 10 },
-      { t: START_H + GAP_H*2, count: 18, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 3, every: 700 },
-      { t: START_H + GAP_H*3, count: 20, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 20, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 760 }, scatter: 12 },
-    ],
-    midBoss: [{ at: midAt(START_H, GAP_H, 2), key: 'midboss1' }],
-    boss: null
-  };
-
-  STAGES.hard['06'] = {
-    id: '06', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 16, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 6, speedY: 90 } },
-      { t: START_H + GAP_H*1, count: 16, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 760 }, scatter: 12 },
-      { t: START_H + GAP_H*2, count: 20, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 3, every: 700 },
-      { t: START_H + GAP_H*3, count: 20, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 22, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 740 }, scatter: 12 },
-    ],
-    midBoss: [],
-    boss: null
-  };
-
-  STAGES.hard['07'] = {
-    id: '07', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 18, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 6, speedY: 92 } },
-      { t: START_H + GAP_H*1, count: 18, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 740 }, scatter: 12 },
-      { t: START_H + GAP_H*2, count: 22, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 3, every: 650 },
-      { t: START_H + GAP_H*3, count: 22, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 24, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 720 }, scatter: 14 },
-    ],
-    midBoss: [{ at: midAt(START_H, GAP_H, 2), key: 'midboss1' }],
-    boss: null
-  };
-
-  STAGES.hard['08'] = {
-    id: '08', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 20, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 6, speedY: 94 } },
-      { t: START_H + GAP_H*1, count: 20, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 720 }, scatter: 12 },
-      { t: START_H + GAP_H*2, count: 24, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 4, every: 600 },
-      { t: START_H + GAP_H*3, count: 24, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 26, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 700 }, scatter: 14 },
-    ],
-    midBoss: [],
-    boss: { at: bossAt(START_H, GAP_H, 4), key: 'boss1' } // 필요시 보스 제거/이동 가능
-  };
-
-  STAGES.hard['09'] = {
-    id: '09', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 22, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 6, speedY: 96 } },
-      { t: START_H + GAP_H*1, count: 22, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 700 }, scatter: 12 },
-      { t: START_H + GAP_H*2, count: 26, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 4, every: 600 },
-      { t: START_H + GAP_H*3, count: 26, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 28, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 680 }, scatter: 14 },
-    ],
-    midBoss: [],
-    boss: { at: bossAt(START_H, GAP_H, 4), key: 'boss1' }
-  };
-
-  STAGES.hard['10'] = {
-    id: '10', difficulty: 'hard',
-    waves: [
-      { t: START_H + GAP_H*0, count: 24, pattern:'straight', form:'line',   enemy:{ ...ENEMY_BASE_H, hp: 6, speedY: 100 } },
-      { t: START_H + GAP_H*1, count: 24, pattern:'aim',      form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 680 }, scatter: 14 },
-      { t: START_H + GAP_H*2, count: 28, pattern:'spread3',  form:'line',   enemy:{ ...ENEMY_BASE_H }, repeat: 4, every: 550 },
-      { t: START_H + GAP_H*3, count: 30, pattern:'aim',      form:'edges',  enemy:{ ...ENEMY_BASE_H } },
-      { t: START_H + GAP_H*4, count: 30, pattern:'spread5',  form:'random', enemy:{ ...ENEMY_BASE_H, fireInt: 660 }, scatter: 16 },
-    ],
-    midBoss: [],
-    boss: { at: bossAt(START_H, GAP_H, 4), key: 'boss1' }
-  };
+    STAGES.hard[id] = {
+      id,
+      difficulty: 'hard',
+      waves,
+      midBoss: mids,
+      boss
+    };
+  }
 })(window);
