@@ -1,6 +1,6 @@
 1. 플레이어 아바타용 이미지 생성
 
-<img width="2560" height="1440" alt="스크린샷 2025-11-07 095647" src="https://github.com/user-attachments/assets/7a0a16bc-86c4-4023-aff7-6f7da6bdbfb7" /><img width="2560" height="1440" alt="스크린샷 2025-11-07 094150" src="https://github.com/user-attachments/assets/4400aae0-581a-43b9-9201-911aea1062b6" />
+<img width="2560" height="1440" alt="스크린샷 2025-11-07 094150" src="https://github.com/user-attachments/assets/4400aae0-581a-43b9-9201-911aea1062b6" />
 
 －－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－
 
@@ -59,6 +59,4 @@
 
 <img width="2560" height="1440" alt="스크린샷 2025-11-07 095723" src="https://github.com/user-attachments/assets/ff31984f-5b99-4b9c-95b0-efe166fd142f" />
 
-－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－
 
-10. 보스 등장 이벤트 연출
