@@ -16,9 +16,19 @@
 <img width="2560" height="1440" alt="스크린샷 2025-11-07 094346" src="https://github.com/user-attachments/assets/ec0343ad-9f2f-4a11-a9a0-01b392831051" />
 
 
+
 4. 공중항모 착함 연출 & 상점 페이지 실행
 
 
 <img width="2560" height="1440" alt="스크린샷 2025-11-07 094417" src="https://github.com/user-attachments/assets/41e94618-c709-40df-99e5-cf49ec4ba5bd" />
 
+
 5. 상점 기능 구현
+
+<img width="2560" height="1440" alt="스크린샷 2025-11-07 094745" src="https://github.com/user-attachments/assets/b19c9c47-9881-44da-882f-ce7e99b039fb" />
+
+
+
+6.상점 페이지 닫기 후 공중항모에서 이륙하는 연출 
+
+<img width="2560" height="1440" alt="스크린샷 2025-11-07 095427" src="https://github.com/user-attachments/assets/3640207e-6c48-4f29-abcc-d2afb7921fc2" />
